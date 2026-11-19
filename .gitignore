@@ -1,0 +1,21 @@
+# Environnements et caches Python
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Données locales (base SQLite créée au premier lancement)
+data/
+
+# Dossiers de travail locaux
+backup/
+cm-proof/
+
+# Fichiers système / éditeur
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+.idea/
+.vscode/

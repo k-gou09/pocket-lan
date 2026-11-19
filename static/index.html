@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0e1318" />
+  <meta name="color-scheme" content="dark" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='8' y='14' width='48' height='38' rx='14' fill='%2322303e'/%3E%3Ccircle cx='24' cy='33' r='7' fill='%236ee7b7'/%3E%3Ccircle cx='40' cy='33' r='7' fill='%236ee7b7'/%3E%3C/svg%3E" />
+  <title>Pocket LAN</title>
+  <link rel="stylesheet" href="./css/app.css" />
+  <link rel="stylesheet" href="./css/avatar.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <button id="btnSettings" class="icon-btn" aria-label="Ouvrir les reglages et les conversations">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+      </button>
+      <div class="brand">
+        <span id="engineDot" class="engine-dot busy" title="Serveur"></span>
+        <span>Pocket&nbsp;LAN</span>
+      </div>
+      <input id="userName" class="name-input" maxlength="48" placeholder="ton nom" aria-label="Ton nom dans la salle" />
+      <span id="connectionState" class="conn" title="Etat de la connexion">connecte</span>
+      <div class="view-switch" role="group" aria-label="Mode d'affichage">
+        <button id="viewChat" class="view-btn" data-view="chat" type="button" aria-pressed="false" title="Chat seul">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12a8 8 0 01-8 8H5l2-3a8 8 0 1114-5z"/></svg>
+        </button>
+        <button id="viewSplit" class="view-btn is-active" data-view="split" type="button" aria-pressed="true" title="Avatar et chat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M12 5v14"/></svg>
+        </button>
+        <button id="viewAvatar" class="view-btn" data-view="avatar" type="button" aria-pressed="false" title="Avatar seul">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="5" y="7" width="14" height="12" rx="6"/><circle cx="10" cy="13" r="1.4" fill="currentColor" stroke="none"/><circle cx="14" cy="13" r="1.4" fill="currentColor" stroke="none"/><path d="M12 7V4"/></svg>
+        </button>
+      </div>
+      <button id="btnNew" class="icon-btn" aria-label="Nouvelle conversation">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </header>
+
+    <main class="panes">
+      <section id="avatarPane" class="pane pane-avatar avatar-screen" aria-label="Robot">
+        <div class="avatar-scene">
+          <div class="avatar-veil"></div>
+          <div class="avatar-stage-wrap">
+            <div id="avatarStage" class="avatar-stage" aria-hidden="true"></div>
+          </div>
+        </div>
+        <div class="avatar-hud">
+          <div class="avatar-badges">
+            <span class="avatar-status"><span class="dot" aria-hidden="true"></span><span id="avatarStatusText">repos</span></span>
+            <span id="dictationBadge" class="avatar-badge online" hidden>
+              <span class="dot" aria-hidden="true"></span>micro
+            </span>
+            <span id="queueBadge" class="avatar-badge" hidden>
+              <span class="dot" aria-hidden="true"></span><span id="queueText">file</span>
+            </span>
+          </div>
+          <div id="dictationLine" class="avatar-caption" hidden>
+            <span id="dictationText"></span>
+          </div>
+          <div class="avatar-controls">
+            <button id="btnDictation" class="avatar-btn primary" type="button" aria-pressed="false" aria-label="Dicter un message">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                <path d="M12 3v10a4 4 0 004 4 4 4 0 004-4M12 3a3 3 0 00-3 3v7a4 4 0 008 0V6a3 3 0 00-3-3z"/>
+                <path d="M5 11v1a7 7 0 0014 0v-1M12 18v3"/>
+              </svg>
+            </button>
+            <button id="btnStopSpeaking" class="avatar-btn danger" type="button" aria-label="Arreter la lecture" disabled>
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><rect x="6.5" y="6.5" width="11" height="11" rx="2.5"/></svg>
+            </button>
+          </div>
+          <p class="avatar-hint">
+            La voix est produite par ce navigateur. La dictée passe par le service en ligne du navigateur :
+            elle nécessite un clic et une connexion, et elle est désactivable.
+          </p>
+        </div>
+      </section>
+
+      <section class="pane pane-chat" aria-label="Chat">
+        <div class="chat-head">
+          <div id="convTitle" class="conv-current-title">Nouvelle conversation</div>
+          <span id="engineChip" class="engine-chip" hidden></span>
+          <div id="usageLine" class="usage-line muted"></div>
+        </div>
+        <div id="messages" class="messages"></div>
+        <div id="empty" class="empty">
+          <div class="empty-title">Bonjour, je suis Pocket.</div>
+          <p class="muted">Assistant partagé sur le réseau local, propulsé par LM Studio.</p>
+          <div class="chips">
+            <button class="chip" data-fill="Raconte-moi une histoire courte.">Raconte-moi une histoire</button>
+            <button class="chip" data-fill="Explique-moi simplement ce que sont les trous noirs.">Explique-moi les trous noirs</button>
+            <button class="chip" data-fill="Quels sont tes réglages actuels ?">Réglages du moteur</button>
+          </div>
+        </div>
+        <button id="jumpDown" class="jump-pill" type="button" hidden>↓ nouveaux messages</button>
+        <div class="composer">
+          <div class="composer-inner">
+            <div class="composer-row">
+              <textarea id="input" rows="1" placeholder="Message…" enterkeyhint="send"></textarea>
+              <button id="btnMic" class="composer-btn" type="button" aria-pressed="false" aria-label="Dicter un message">
+                <svg class="i-mic-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v10a4 4 0 004 4 4 4 0 004-4M12 3a3 3 0 00-3 3v7a4 4 0 008 0V6a3 3 0 00-3-3z"/><path d="M5 11v1a7 7 0 0014 0v-1M12 18v3"/></svg>
+                <svg class="i-mic-off" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false" hidden><rect x="6.5" y="6.5" width="11" height="11" rx="2.5"/></svg>
+              </button>
+              <button id="btnStopTts" class="composer-btn" type="button" aria-label="Couper la lecture" hidden>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M16 9l5 6M21 9l-5 6"/></svg>
+              </button>
+              <button id="btnSend" class="send-btn" aria-label="Envoyer">
+                <svg class="i-send" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M2.8 20.4l18.2-7.9a.55.55 0 000-1L2.8 3.6a.6.6 0 00-.8.75L4 11l9.5 1L4 13l-2 6.65a.6.6 0 00.8.75z"/></svg>
+                <svg class="i-stop" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false" hidden><rect x="6.5" y="6.5" width="11" height="11" rx="2.5"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <aside id="drawer" class="drawer" aria-label="Conversations et réglages">
+      <div class="drawer-head">
+        <span>Conversations</span>
+        <button id="btnCloseDrawer" class="icon-btn small" aria-label="Fermer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div id="convList" class="conv-list"></div>
+
+      <div class="drawer-section-head">Réglages</div>
+      <div class="drawer-settings">
+        <div class="setting-row">
+          <span>Modele (partagé)</span>
+          <select id="settingModel" class="setting-select"></select>
+        </div>
+        <div class="setting-row">
+          <span>Fenêtre de contexte LM Studio</span>
+          <input id="settingContextLength" class="setting-number" type="number" min="128" max="32768" step="128" />
+        </div>
+        <div class="setting-row">
+          <span>Budget d'historique (tokens)</span>
+          <input id="settingBudget" class="setting-number" type="number" min="120" max="16000" step="100" />
+        </div>
+        <div class="setting-row">
+          <span>Tokens de réponse</span>
+          <input id="settingMaxTokens" class="setting-number" type="number" min="64" max="4096" step="32" />
+        </div>
+        <div class="setting-row">
+          <span>Température</span>
+          <input id="settingTemperature" class="setting-number" type="number" min="0" max="2" step="0.1" />
+        </div>
+        <div class="setting-row">
+          <span>Utiliser le raisonnement si content est vide</span>
+          <button id="settingReasoning" class="setting-toggle" type="button" role="switch" aria-checked="false">désactivé</button>
+        </div>
+        <div class="setting-row">
+          <span>Vocalisation</span>
+          <button id="settingTts" class="setting-toggle" type="button" role="switch" aria-checked="true">activée</button>
+        </div>
+        <div class="setting-row">
+          <span>Micro (dictée en ligne)</span>
+          <button id="settingMic" class="setting-toggle" type="button" role="switch" aria-checked="true">activé</button>
+        </div>
+        <div class="setting-row">
+          <span>Envoi auto après dictée</span>
+          <button id="settingAutoSend" class="setting-toggle" type="button" role="switch" aria-checked="true">activé</button>
+        </div>
+        <div class="setting-row">
+          <span>Voix (navigateur)</span>
+          <select id="settingVoice" class="setting-select"></select>
+        </div>
+        <div class="setting-row">
+          <span>Consigne système (partagée)</span>
+          <textarea id="settingPrompt" class="setting-textarea" rows="4"></textarea>
+        </div>
+        <button id="btnApplyModel" class="primary-btn">Appliquer le modèle</button>
+        <p class="setting-note">
+          Le modèle est partagé : il est unique dans LM Studio, donc le choisir change la réponse de tout le monde.
+          La fenêtre de contexte est appliquée au chargement du modèle, le budget d'historique est appliqué à chaque requête.
+        </p>
+      </div>
+
+      <div class="participants">
+        <div class="participants-head">Dans la salle</div>
+        <ul id="participantList"></ul>
+      </div>
+
+      <div class="drawer-foot">
+        Serveur : <span id="serverInfo" class="mono">-</span> .
+        file d'attente : <span id="gateInfo" class="mono">-</span>
+      </div>
+    </aside>
+
+    <div id="scrim" class="scrim" hidden></div>
+    <div id="toast" class="toast" hidden role="status" aria-live="polite"></div>
+  </div>
+
+  <script type="module" src="./js/client.js"></script>
+</body>
+</html>
