@@ -35,16 +35,19 @@ CHARS_PER_TOKEN = 4
 # Vide : la detection est desactivee (aucune requete reseau).
 GITHUB_REPO = os.environ.get("POCKET_GITHUB_REPO", "").strip()
 
-# Reglages appliques a tout le monde : le moteur est unique, donc le modele et la
-# consigne sont globaux.
+# Consigne par defaut, utilisee pour creer le persona initial si absent.
+DEFAULT_SYSTEM_PROMPT = (
+    "Tu es Pocket, un assistant de poche amical, curieux et concis. "
+    "Tu reponds toujours en francais, de facon claire et naturelle. "
+    "Tes reponses sont courtes (1 a 4 phrases) sauf si l'utilisateur demande un "
+    "developpement. Tu ne montres jamais de raisonnement interne."
+)
+
+# Reglages appliques a tout le monde : le moteur est unique, donc le modele et
+# le persona actif sont globaux.
 GLOBAL_DEFAULTS = {
     "model": "qwen3-0.6b",
-    "systemPrompt": (
-        "Tu es Pocket, un assistant de poche amical, curieux et concis. "
-        "Tu reponds toujours en francais, de facon claire et naturelle. "
-        "Tes reponses sont courtes (1 a 4 phrases) sauf si l'utilisateur demande un "
-        "developpement. Tu ne montres jamais de raisonnement interne."
-    ),
+    "persona": "default",
     "contextBudget": 3000,
     "maxParallel": 2,
 }

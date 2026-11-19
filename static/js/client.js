@@ -58,7 +58,7 @@ const els = {
   settingMic: $('settingMic'),
   settingAutoSend: $('settingAutoSend'),
   settingVoice: $('settingVoice'),
-  settingPrompt: $('settingPrompt'),
+  settingPersona: $('settingPersona'),
   btnApplyModel: $('btnApplyModel'),
   btnCloseDrawer: $('btnCloseDrawer'),
 };
@@ -80,6 +80,7 @@ const dictation = new Dictation({ lang: 'fr-FR', continuous: true, interimResult
 
 let settings = {};
 let globalSettings = {};
+let personasList = [];
 let session = null;
 let conversations = [];
 let current = null;
@@ -499,6 +500,7 @@ function handleEvent(data) {
       session = data.data.session;
       settings = data.data.settings;
       globalSettings = data.data.settings;
+      personasList = data.data.personas || personasList;
       conversations = data.data.conversations || [];
       renderSettings();
       renderParticipants(data.data.participants || []);
@@ -689,7 +691,7 @@ function renderSettings() {
   els.settingBudget.value = settings.contextBudget || globalSettings.contextBudget || 0;
   els.settingMaxTokens.value = settings.maxTokens;
   els.settingTemperature.value = settings.temperature;
-  els.settingPrompt.value = globalSettings.systemPrompt || '';
+  fillPersonas(personasList);
   if (!els.settingContextLength.value) els.settingContextLength.value = 4096;
 
   els.settingTts.setAttribute('aria-checked', settings.tts ? 'true' : 'false');
@@ -724,6 +726,27 @@ function fillVoices() {
     choice.textContent = voice.name + (voice.localService ? '' : ' (en ligne)');
     if (settings.voice && voice.name === settings.voice) choice.selected = true;
     els.settingVoice.appendChild(choice);
+  }
+}
+
+
+function fillPersonas(list) {
+  if (!els.settingPersona) return;
+  const active = globalSettings.persona || (settings && settings.persona) || 'default';
+  els.settingPersona.innerHTML = '';
+  for (const persona of (list || [])) {
+    const choice = document.createElement('option');
+    choice.value = persona.id;
+    choice.textContent = persona.name || persona.id;
+    if (persona.id === active) choice.selected = true;
+    els.settingPersona.appendChild(choice);
+  }
+  if (!els.settingPersona.options.length) {
+    const choice = document.createElement('option');
+    choice.value = active;
+    choice.textContent = active;
+    choice.selected = true;
+    els.settingPersona.appendChild(choice);
   }
 }
 
@@ -983,7 +1006,7 @@ function bind() {
   els.settingMaxTokens.addEventListener('change', () => sendSettingsPatch({ maxTokens: Number(els.settingMaxTokens.value) || 512 }));
   els.settingTemperature.addEventListener('change', () => sendSettingsPatch({ temperature: Number(els.settingTemperature.value) || 0.7 }));
 
-  els.settingPrompt.addEventListener('change', () => sendEvent('global', { patch: { systemPrompt: els.settingPrompt.value } }));
+  els.settingPersona.addEventListener('change', () => sendGlobalPatch({ persona: els.settingPersona.value }));
 
   els.btnApplyModel.addEventListener('click', async () => {
     const response = await fetch('/api/model/select', {
@@ -1021,6 +1044,7 @@ async function boot() {
     session = data.session;
     settings = data.settings;
     globalSettings = data.settings;
+    personasList = data.personas || [];
     conversations = data.conversations || [];
     renderSettings();
     const last = localStorage.getItem(CURRENT_KEY);

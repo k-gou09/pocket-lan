@@ -16,7 +16,7 @@ from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, config, lm_client, model_mgr, release, store
+from . import __version__, config, lm_client, model_mgr, personas, release, store
 from .lm_client import FifoGate
 from .service import answer
 from .ws import Hub
@@ -25,6 +25,7 @@ from .ws import Hub
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     store.connect()
+    personas.ensure_seeded()
     application.state.hub = Hub()
     application.state.client = httpx.AsyncClient()
     application.state.gate = FifoGate(store.get_global_settings().get("maxParallel", 2))
@@ -127,6 +128,8 @@ def snapshot(sid):
         "model": settings.get("model"),
         "cli": model_mgr.cli_available(),
         "gate": gate().snapshot(),
+        "personas": personas.list_personas(),
+        "active_persona": personas.get_active(),
     }
 
 
@@ -205,6 +208,11 @@ async def get_models(request: Request):
     models = await lm_client.list_models(client())
     return json_ok({"models": models}, sid)
 
+@app.get("/api/personas")
+async def get_personas(request: Request):
+    sid = session_id(request)
+    return json_ok({"personas": personas.list_personas(), "active": personas.get_active()}, sid)
+
 
 @app.get("/api/conversations")
 async def get_conversations(request: Request):
@@ -254,7 +262,6 @@ async def update_global(request: Request):
     body = await request.json()
     settings = store.save_global_settings(body)
     gate().limit = max(1, int(settings.get("maxParallel", 2)))
-    tts.invalidate_cache()
     await hub().broadcast({"type": "global", "settings": settings})
     return json_ok({"settings": settings}, sid)
 

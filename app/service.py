@@ -10,7 +10,7 @@ meme session se suivent au lieu de s'entrecouper.
 
 import time
 
-from . import lm_client, store
+from . import lm_client, personas, store
 
 
 async def answer(hub, client, gate, session_id, conv_id, user_text):
@@ -34,7 +34,8 @@ async def answer(hub, client, gate, session_id, conv_id, user_text):
         await hub.send(session_id, {"type": "message", "conversation": conv, "message": user_message})
 
         history = store.list_messages(conv["id"])
-        messages = lm_client.build_messages(settings["systemPrompt"], history, settings["contextBudget"])
+        system_prompt = personas.resolve_prompt(settings.get("persona"))
+        messages = lm_client.build_messages(system_prompt, history, settings["contextBudget"])
 
         stop_event = hub.stop_flag(session_id)
         stop_event.clear()
