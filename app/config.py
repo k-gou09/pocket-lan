@@ -31,6 +31,10 @@ MAX_MODEL_SIZE_GB = float(os.environ.get("POCKET_MAX_MODEL_GO", "8"))
 # observe sur les modeles GGUF de la famille Qwen. Ce n'est pas un comptage exact.
 CHARS_PER_TOKEN = 4
 
+# Depot GitHub "owner/repo" pour la detection silencieuse des releases.
+# Vide : la detection est desactivee (aucune requete reseau).
+GITHUB_REPO = os.environ.get("POCKET_GITHUB_REPO", "").strip()
+
 # Reglages appliques a tout le monde : le moteur est unique, donc le modele et la
 # consigne sont globaux.
 GLOBAL_DEFAULTS = {

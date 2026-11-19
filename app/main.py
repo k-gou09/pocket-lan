@@ -16,7 +16,7 @@ from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, lm_client, model_mgr, store
+from . import __version__, config, lm_client, model_mgr, release, store
 from .lm_client import FifoGate
 from .service import answer
 from .ws import Hub
@@ -28,11 +28,18 @@ async def lifespan(application: FastAPI):
     application.state.hub = Hub()
     application.state.client = httpx.AsyncClient()
     application.state.gate = FifoGate(store.get_global_settings().get("maxParallel", 2))
+    application.state.release = release.initial_state()
+    application.state.release_stop = asyncio.Event()
     print_startup()
     prune_task = asyncio.create_task(prune_loop(application.state.hub))
+    release_task = asyncio.create_task(
+        release.loop(application.state.client, application.state.release, application.state.release_stop)
+    )
     try:
         yield
     finally:
+        application.state.release_stop.set()
+        release_task.cancel()
         prune_task.cancel()
         await application.state.client.aclose()
 
@@ -45,7 +52,7 @@ async def prune_loop(hub):
             await hub.broadcast({"type": "activity", "activity": hub.participants()})
 
 
-app = FastAPI(title="Pocket LAN", version="1.0", lifespan=lifespan)
+app = FastAPI(title="Pocket LAN", version=__version__, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(config.STATIC_DIR), html=True), name="static")
 
 
@@ -125,7 +132,7 @@ def snapshot(sid):
 
 def print_startup():
     address = local_ip()
-    print("Pocket LAN sur :")
+    print("Pocket LAN " + __version__ + " sur :")
     print("  local      http://localhost:" + str(config.PORT))
     print("  reseau     http://" + address + ":" + str(config.PORT))
     print("  LM Studio  " + config.LM_BASE_URL)
@@ -169,6 +176,7 @@ async def health(request: Request):
         "models": len(models),
         "loaded": [m["id"] for m in loaded],
         "gate": gate().snapshot(),
+        "version": __version__,
     }
     if not reachable:
         payload["error"] = error
