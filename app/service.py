@@ -13,7 +13,7 @@ import time
 from . import lm_client, personas, store
 
 
-async def answer(hub, client, gate, session_id, conv_id, user_text):
+async def answer(hub, client, gate, session_id, conv_id, user_text, regenerate=False):
     if hub.session_lock(session_id).locked():
         await hub.send(
             session_id,
@@ -25,13 +25,24 @@ async def answer(hub, client, gate, session_id, conv_id, user_text):
 
         conv = store.get_conversation(conv_id)
         if conv is None:
+            if regenerate:
+                await hub.send(session_id, {"type": "error", "message": "Conversation introuvable."})
+                return
             conv = store.create_conversation(session_id)
 
-        if not store.list_messages(conv["id"]):
-            conv["title"] = store.derive_title(user_text)
+        if regenerate:
+            last_user = store.last_user_message(conv["id"])
+            if last_user is None:
+                await hub.send(session_id, {"type": "error", "message": "Aucun message à régénérer.", "conv_id": conv["id"]})
+                return
+            # informe les onglets que la réponse précédente est retirée
+            await hub.send(session_id, {"type": "regenerate_start", "conv_id": conv["id"]})
+        else:
+            if not store.list_messages(conv["id"]):
+                conv["title"] = store.derive_title(user_text)
 
-        user_message = store.add_message(conv["id"], "user", user_text)
-        await hub.send(session_id, {"type": "message", "conversation": conv, "message": user_message})
+            user_message = store.add_message(conv["id"], "user", user_text)
+            await hub.send(session_id, {"type": "message", "conversation": conv, "message": user_message})
 
         history = store.list_messages(conv["id"])
         system_prompt = personas.resolve_prompt(settings.get("persona"))
@@ -74,14 +85,14 @@ async def answer(hub, client, gate, session_id, conv_id, user_text):
                     continue
                 if kind == "content":
                     content_parts.append(piece)
-                    await hub.send(
+                    await hub.send_stream(
                         session_id,
                         {"type": "chunk", "conv_id": conv["id"], "message_id": message_id, "kind": "content", "delta": piece},
                     )
                 elif kind == "reasoning":
                     reasoning_parts.append(piece)
                     if settings.get("showReasoning"):
-                        await hub.send(
+                        await hub.send_stream(
                             session_id,
                             {"type": "chunk", "conv_id": conv["id"], "message_id": message_id, "kind": "reasoning", "delta": piece},
                         )

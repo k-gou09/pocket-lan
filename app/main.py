@@ -350,6 +350,22 @@ async def handle_message(sid, data, websocket=None):
         asyncio.create_task(answer(hub(), client(), gate(), sid, data.get("conv_id") or "", text))
         return
 
+    if kind == "regenerate":
+        conv_id = str(data.get("conv_id") or "").strip()
+        conv = store.get_conversation(conv_id)
+        if conv is None or conv["session_id"] != sid:
+            await hub().send(sid, {"type": "error", "message": "Conversation introuvable."})
+            return
+        removed = store.pop_last_assistant(conv_id)
+        if removed is None:
+            await hub().send(sid, {"type": "error", "message": "Aucune réponse à régénérer.", "conv_id": conv_id})
+            return
+        await hub().send(sid, {"type": "message_removed", "conv_id": conv_id, "message_id": removed["id"]})
+        if websocket is not None:
+            hub().mark_speaker(sid, websocket)
+        asyncio.create_task(answer(hub(), client(), gate(), sid, conv_id, "", regenerate=True))
+        return
+
     if kind == "state":
         hub().set_activity(sid, state=data.get("state"))
         await hub().broadcast({"type": "activity", "activity": hub().participants()})

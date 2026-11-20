@@ -109,6 +109,21 @@ class Hub:
             except Exception:  # noqa: BLE001 - socket ferme en cours d'envoi
                 self.connections[session_id].discard(websocket)
 
+    async def send_stream(self, session_id, payload):
+        """Diffuse un evenement de stream ; seul l'onglet speaker recoit speak=True."""
+        speaker = self.speakers.get(session_id)
+        sockets = list(self.connections.get(session_id, ()))
+        if sockets and speaker not in sockets:
+            speaker = sockets[0]
+            self.speakers[session_id] = speaker
+
+        for websocket in sockets:
+            body = dict(payload, speak=websocket is speaker)
+            try:
+                await websocket.send_json(body)
+            except Exception:  # noqa: BLE001 - socket ferme en cours d'envoi
+                self.connections[session_id].discard(websocket)
+
     async def broadcast(self, payload, exclude=None):
         targets = set(self.connections.keys())
         if exclude:

@@ -6,6 +6,7 @@
 import { LipSync } from './speech.js';
 
 const SPLIT_SENTENCES = /(?<=[.!?…])\s+/;
+const SENTENCE_END = /[.!?…](?:["')\]]+)?\s*$/;
 
 export function splitSentences(text) {
   return String(text ?? '')
@@ -14,6 +15,20 @@ export function splitSentences(text) {
     .split(SPLIT_SENTENCES)
     .map((s) => s.trim())
     .filter(Boolean);
+}
+
+function extractCompleteSentences(buffer) {
+  const text = String(buffer ?? '').replace(/\s+/g, ' ').trimStart();
+  if (!text) return { ready: [], rest: '' };
+  const parts = text.split(SPLIT_SENTENCES);
+  // si le texte ne se termine pas par une ponctuation de fin, le dernier morceau est incomplet
+  if (parts.length === 0) return { ready: [], rest: text };
+  const last = parts[parts.length - 1] || '';
+  if (SENTENCE_END.test(text)) {
+    return { ready: parts.map((s) => s.trim()).filter(Boolean), rest: '' };
+  }
+  const ready = parts.slice(0, -1).map((s) => s.trim()).filter(Boolean);
+  return { ready, rest: last };
 }
 
 export class Speaker {
@@ -54,6 +69,8 @@ export class Speaker {
     this.retryCount = 0;
     this.breatheMs = 120;
 
+    this._stream = null; // { queue: string[], done: boolean, notify: fn|null, buffer: string, hooks }
+
     this.refreshVoices();
   }
 
@@ -92,6 +109,7 @@ export class Speaker {
     return Boolean(this.voice && this.voice.localService);
   }
 
+  // Lecture complete (non streamée).
   speak(text, { onStart = null, onEnd = null, onBoundary = null, onSentence = null } = {}) {
     const sentences = splitSentences(text);
     if (sentences.length === 0 || !this.supported) {
@@ -119,16 +137,78 @@ export class Speaker {
     this._onEnd = onEnd;
 
     const hooks = { onStart, onEnd, onBoundary, onSentence };
+    this._stream = { queue: [...sentences], done: true, notify: null, buffer: '', hooks };
     // Meme respiration apres un arret : le moteur vocal du navigateur ignore
     // parfois une enonce emise juste apres cancel().
     window.setTimeout(
-      () => this.#run(sentences, token, hooks),
+      () => this.#run(token),
       wasSpeaking ? Math.max(90, this.breatheMs) : this.breatheMs,
     );
   }
 
+  // Démarre une lecture au fil de l'eau : on alimente via feed(), puis endStream().
+  beginStream({ onStart = null, onEnd = null, onBoundary = null, onSentence = null } = {}) {
+    if (!this.supported) {
+      onEnd?.({ reason: 'unsupported', cancelled: false });
+      return false;
+    }
+    const wasSpeaking = this.speaking;
+    this.stop('restart', { silent: true });
+    const token = ++this._token;
+    this.refreshVoices();
+    this.speaking = true;
+    this.onStateChange?.('speaking');
+    this._onEnd = onEnd;
+    const hooks = { onStart, onEnd, onBoundary, onSentence };
+    this._stream = { queue: [], done: false, notify: null, buffer: '', hooks };
+    window.setTimeout(
+      () => this.#run(token),
+      wasSpeaking ? Math.max(90, this.breatheMs) : this.breatheMs,
+    );
+    return true;
+  }
+
+  // Ajoute du texte brut (delta) : les phrases complètes sont mises en file.
+  feed(delta) {
+    const stream = this._stream;
+    if (!stream || stream.done && stream.queue.length === 0 && !stream.buffer) {
+      // si pas de stream actif, ignorer (sécurité)
+    }
+    if (!stream || this._token === 0) return;
+    stream.buffer += String(delta ?? '');
+    const { ready, rest } = extractCompleteSentences(stream.buffer);
+    stream.buffer = rest;
+    if (ready.length) {
+      stream.queue.push(...ready);
+      const notify = stream.notify;
+      stream.notify = null;
+      notify?.();
+    }
+  }
+
+  // Signale la fin du flux : flush le reliquat et laisse la file se vider.
+  endStream() {
+    const stream = this._stream;
+    if (!stream) return;
+    const rest = String(stream.buffer || '').trim();
+    if (rest) stream.queue.push(rest);
+    stream.buffer = '';
+    stream.done = true;
+    const notify = stream.notify;
+    stream.notify = null;
+    notify?.();
+  }
+
   stop(reason = 'cancelled', { silent = false } = {}) {
     this._token += 1;
+    const stream = this._stream;
+    if (stream) {
+      stream.done = true;
+      const notify = stream.notify;
+      stream.notify = null;
+      notify?.();
+    }
+    this._stream = null;
     clearTimeout(this._watchdog);
     this._watchdog = 0;
     clearTimeout(this._grace);
@@ -159,19 +239,39 @@ export class Speaker {
     if (callback && !silent) callback({ reason, cancelled: true });
   }
 
-  async #run(sentences, token, hooks) {
-    for (let i = 0; i < sentences.length; i += 1) {
+  async #nextSentence(token) {
+    while (token === this._token) {
+      const stream = this._stream;
+      if (!stream) return null;
+      if (stream.queue.length > 0) return stream.queue.shift();
+      if (stream.done) return null;
+      await new Promise((resolve) => {
+        stream.notify = resolve;
+        // sécurité : si stop() a déjà invalidé le token, resolve immédiat au prochain tick
+        if (token !== this._token) resolve();
+      });
+    }
+    return null;
+  }
+
+  async #run(token) {
+    while (token === this._token) {
+      const sentence = await this.#nextSentence(token);
       if (token !== this._token) return;
-      const sentence = sentences[i];
-      hooks.onSentence?.(sentence, i, sentences.length);
+      if (sentence == null) break;
+      const stream = this._stream;
+      const hooks = stream?.hooks || {};
+      hooks.onSentence?.(sentence);
       const outcome = await this.#speakOne(sentence, token, hooks);
       if (token !== this._token) return;
       if (outcome === 'cancelled') return;
     }
 
     this._lip?.stop();
+    const wasSpeaking = this.speaking;
     this.speaking = false;
-    this.onStateChange?.('idle');
+    this._stream = null;
+    if (wasSpeaking) this.onStateChange?.('idle');
     const callback = this._onEnd;
     this._onEnd = null;
     callback?.({ reason: 'end', cancelled: false });
@@ -217,10 +317,6 @@ export class Speaker {
       };
       this._resolveOne = finish;
 
-      // Mesure sur l'emulateur Android : une enonce emise juste apres cancel()
-      // est parfois ignoree. On ne retente donc QUE le cas ou le moteur n'a rien
-      // emis du tout (aucun 'start', aucun 'end' : expiration du chien de garde).
-      //
       // Ne jamais retenter sur un 'end' sans 'start' : Chrome (Windows) emet
       // parfois 'end' avant 'start' alors que la phrase a bien ete prononcee.
       // C'est ce retry qui faisait lire chaque phrase deux fois.

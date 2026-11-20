@@ -259,3 +259,29 @@ def _decode(raw):
         return json.loads(raw)
     except (TypeError, json.JSONDecodeError):
         return raw
+
+
+def pop_last_assistant(conv_id):
+    """Supprime le dernier message assistant d'une conversation et le renvoie."""
+    with _LOCK:
+        conn = connect()
+        row = conn.execute(
+            "SELECT id, conv_id, role, content, created_at, tokens FROM messages "
+            "WHERE conv_id = ? AND role = 'assistant' ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            (conv_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        conn.execute("DELETE FROM messages WHERE id = ?", (row["id"],))
+        conn.commit()
+    return dict(row)
+
+
+def last_user_message(conv_id):
+    with _LOCK:
+        row = connect().execute(
+            "SELECT id, conv_id, role, content, created_at, tokens FROM messages "
+            "WHERE conv_id = ? AND role = 'user' ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            (conv_id,),
+        ).fetchone()
+    return dict(row) if row else None

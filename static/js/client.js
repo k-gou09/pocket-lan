@@ -96,6 +96,8 @@ const VIEW_KEY = 'pocket.viewMode';
 const VIEWS = ['chat', 'split', 'avatar'];
 let lastSentText = '';
 let lastSpokenId = '';
+let streamSpeakId = '';
+let streamSpokenDone = false;
 let gateWaiting = 0;
 let stickToBottom = true;
 let typingEl = null;
@@ -197,6 +199,7 @@ function showTyping() {
   hideTyping();
   const wrap = document.createElement('div');
   wrap.className = 'msg assistant';
+  wrap.dataset.messageId = messageId;
   const bubble = document.createElement('div');
   bubble.className = 'bubble typing-bubble';
   for (let i = 0; i < 3; i += 1) {
@@ -271,6 +274,7 @@ function addMsgTime(wrap, ts) {
 function appendErrorBubble(text) {
   const wrap = document.createElement('div');
   wrap.className = 'msg assistant';
+  wrap.dataset.messageId = messageId;
   const bubble = document.createElement('div');
   bubble.className = 'bubble error';
   const label = document.createElement('span');
@@ -308,6 +312,7 @@ function setView(mode) {
 function appendUserMessage(message) {
   const wrap = document.createElement('div');
   wrap.className = 'msg user';
+  if (message && message.id) wrap.dataset.messageId = message.id;
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
   bubble.appendChild(document.createTextNode(message.content));
@@ -322,6 +327,7 @@ function assistantRow(messageId) {
 
   const wrap = document.createElement('div');
   wrap.className = 'msg assistant';
+  wrap.dataset.messageId = messageId;
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
   // Le texte est un vrai noeud Text : appendData() n'existe que sur ce type de noeud.
@@ -350,6 +356,56 @@ function appendAssistantMessage(message) {
     row.bubble.insertBefore(line, row.textWrap);
     row.reasoningEl = line;
   }
+  refreshRegenerateButtons();
+}
+
+
+function refreshRegenerateButtons() {
+  if (!els || !els.messages) return;
+  const msgs = (current && current.messages) || [];
+  const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant');
+  const rows = els.messages.querySelectorAll('.msg.assistant');
+  rows.forEach((row) => {
+    const id = row.dataset.messageId || '';
+    let actions = row.querySelector('.msg-actions');
+    const can = !!(lastAssistant && id && id === lastAssistant.id && !busy);
+    const existing = actions ? actions.querySelector('.regen-btn') : null;
+    if (can) {
+      if (!actions) {
+        // devrait exister (addMsgActions), mais sécurité
+        const bubble = row.querySelector('.bubble');
+        if (!bubble) return;
+        actions = document.createElement('div');
+        actions.className = 'msg-actions';
+        bubble.appendChild(actions);
+      }
+      if (!existing) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'msg-action-btn regen-btn';
+        btn.textContent = 'Régénérer';
+        btn.title = 'Régénérer la réponse';
+        btn.addEventListener('click', () => requestRegenerate());
+        actions.appendChild(btn);
+      }
+    } else if (existing) {
+      existing.remove();
+    }
+  });
+}
+
+function requestRegenerate() {
+  if (busy || !current) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    showToast('Connexion perdue : reconnexion en cours.');
+    return;
+  }
+  speaker.stop();
+  setSource('tts', 'idle');
+  setBusy(true);
+  setSource('server', 'thinking');
+  showTyping();
+  sendEvent('regenerate', { conv_id: current.id });
 }
 
 function renderMessages() {
@@ -366,6 +422,7 @@ function renderMessages() {
   els.empty.hidden = current.messages.length > 0;
   stickToBottom = true;
   scrollToBottom(true);
+  refreshRegenerateButtons();
 }
 
 function renderConversationList() {
@@ -527,6 +584,15 @@ function handleEvent(data) {
       const row = assistantRow(data.message_id);
       if (data.kind === 'content') {
         row.textNode.appendData(data.delta);
+        // TTS au fil de l'eau : seul l'onglet speaker reçoit speak=true.
+        if (data.speak && settings.tts) {
+          if (streamSpeakId !== data.message_id) {
+            streamSpeakId = data.message_id;
+            streamSpokenDone = false;
+            speaker.beginStream();
+          }
+          if (!streamSpokenDone) speaker.feed(data.delta);
+        }
       } else {
         if (!row.reasoningEl) {
           const line = document.createElement('span');
@@ -555,6 +621,7 @@ function handleEvent(data) {
           row.reasoningNode = null;
         }
         addMsgTime(row.wrap, message.created_at);
+        row.wrap.dataset.messageId = message.id;
       } else {
         appendAssistantMessage({ ...message, reasoning: null });
       }
@@ -562,7 +629,10 @@ function handleEvent(data) {
       hideTyping();
 
       // On ne pousse la reponse que dans sa propre conversation.
-      if (current && current.id === data.conv_id) current.messages.push(message);
+      if (current && current.id === data.conv_id) {
+        current.messages.push(message);
+        refreshRegenerateButtons();
+      }
 
       els.usageLine.textContent = data.usage && data.usage.total_tokens
         ? 'tokens : ' + data.usage.total_tokens + ' · ' + Math.round((data.elapsed_ms || 0) / 1000) + ' s'
@@ -571,11 +641,22 @@ function handleEvent(data) {
       setBusy(false);
       setSource('server', 'idle');
 
-      // Une seule lecture par message : le serveur designe l'onglet qui a pose
-      // la question (speak), et on ne lit pas deux fois le meme message.
+      // TTS : lecture au fil de l'eau si démarrée, sinon lecture complète.
       if (data.speak !== false && data.message_id !== lastSpokenId) {
         lastSpokenId = data.message_id;
-        bus.emit('reply', { text: message.content });
+        if (streamSpeakId === data.message_id && settings.tts) {
+          streamSpokenDone = true;
+          speaker.endStream();
+        } else if (settings.tts && message.content) {
+          speaker.speak(message.content);
+        }
+      } else if (streamSpeakId === data.message_id) {
+        streamSpokenDone = true;
+        speaker.endStream();
+      }
+      if (streamSpeakId === data.message_id) {
+        streamSpeakId = '';
+        streamSpokenDone = false;
       }
 
       applyEmotion(data.stopped ? 'neutral' : 'happy');
@@ -618,6 +699,27 @@ function handleEvent(data) {
         showToast(data.message);
       }
       refreshChip();
+      break;
+    }
+
+    case 'regenerate_start': {
+      if (current && data.conv_id === current.id) {
+        const msgs = current.messages || [];
+        if (msgs.length && msgs[msgs.length - 1].role === 'assistant') {
+          msgs.pop();
+          renderMessages();
+        }
+        els.empty.hidden = (current.messages || []).length > 0;
+      }
+      break;
+    }
+
+    case 'message_removed': {
+      if (current && data.conv_id === current.id) {
+        current.messages = (current.messages || []).filter((m) => m.id !== data.message_id);
+        renderMessages();
+        els.empty.hidden = (current.messages || []).length > 0;
+      }
       break;
     }
 
@@ -795,6 +897,7 @@ function setBusy(value) {
   els.iStop.hidden = !value;
   els.btnSend.classList.toggle('is-busy', value);
   els.btnSend.setAttribute('aria-label', value ? 'Arrêter la génération' : 'Envoyer');
+  refreshRegenerateButtons();
 }
 
 function sendText(text) {
