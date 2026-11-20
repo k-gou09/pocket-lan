@@ -26,6 +26,14 @@ echo   local   http://localhost:%POCKET_PORT%
 echo   reseau  http://ADRESSE_IP_DU_PC:%POCKET_PORT%
 echo.
 
+:serve
 python -m uvicorn app.main:app --host 0.0.0.0 --port %POCKET_PORT%
+set "POCKET_EXIT=%ERRORLEVEL%"
+if "%POCKET_EXIT%"=="42" (
+  echo.
+  echo [Pocket LAN] Mise a jour appliquee, redemarrage...
+  echo.
+  goto serve
+)
 
 endlocal

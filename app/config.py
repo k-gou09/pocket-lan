@@ -35,6 +35,9 @@ CHARS_PER_TOKEN = 4
 # Vide : la detection est desactivee (aucune requete reseau).
 GITHUB_REPO = os.environ.get("POCKET_GITHUB_REPO", "").strip()
 
+# Jeton admin : requis pour les actions sensibles (mise à jour). Vide = désactivé.
+ADMIN_TOKEN = os.environ.get("POCKET_ADMIN_TOKEN", "").strip()
+
 # Consigne par defaut, utilisee pour creer le persona initial si absent.
 DEFAULT_SYSTEM_PROMPT = (
     "Tu es Pocket, un assistant de poche amical, curieux et concis. "

@@ -52,13 +52,43 @@ def initial_state() -> dict[str, Any]:
         "url": "",
         "checked_at": 0,
         "error": "" if configured else "non configure",
+        "applying": False,
+        "apply_status": "",
+        "apply_message": "",
+        "applied_by": "",
+    }
+
+
+def public_state(state: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "enabled": bool(state.get("enabled")),
+        "repo": state.get("repo", ""),
+        "current": state.get("current", __version__),
+        "latest": state.get("latest", ""),
+        "update_available": bool(state.get("update_available")),
+        "url": state.get("url", ""),
+        "checked_at": int(state.get("checked_at") or 0),
+        "error": state.get("error", ""),
+        "applying": bool(state.get("applying")),
+        "apply_status": state.get("apply_status", ""),
+        "apply_message": state.get("apply_message", ""),
+        "applied_by": state.get("applied_by", ""),
     }
 
 
 async def check_once(client: httpx.AsyncClient, state: dict[str, Any]) -> dict[str, Any]:
     """Effectue une verification. Met a jour et renvoie l'etat."""
+    prev_available = bool(state.get("update_available"))
+    prev_latest = str(state.get("latest") or "")
     if not config.GITHUB_REPO:
-        state.update(initial_state())
+        base = initial_state()
+        # conserver les champs d'application en cours si présents
+        for k in ("applying", "apply_status", "apply_message", "applied_by"):
+            if k in state:
+                base[k] = state[k]
+        state.clear()
+        state.update(base)
+        state["changed"] = (prev_available != state.get("update_available")) or (prev_latest != state.get("latest"))
         return state
 
     url = "https://api.github.com/repos/" + config.GITHUB_REPO + "/releases/latest"
@@ -90,14 +120,20 @@ async def check_once(client: httpx.AsyncClient, state: dict[str, Any]) -> dict[s
         state["current"] = __version__
         state["checked_at"] = int(time.time())
         state["error"] = str(err)
+    state["changed"] = (prev_available != bool(state.get("update_available"))) or (prev_latest != str(state.get("latest") or ""))
     return state
 
 
-async def loop(client: httpx.AsyncClient, state: dict[str, Any], stop: asyncio.Event):
-    """Boucle periodique, silencieuse. S'arrete quand stop est signale."""
+async def loop(client: httpx.AsyncClient, state: dict[str, Any], stop: asyncio.Event, on_change=None):
+    """Boucle periodique. Notifie on_change(state) si l'état de mise à jour change."""
     await asyncio.sleep(STARTUP_DELAY_SECONDS)
     while not stop.is_set():
         await check_once(client, state)
+        if on_change and state.get("changed"):
+            try:
+                await on_change(state)
+            except Exception:
+                pass
         try:
             await asyncio.wait_for(stop.wait(), timeout=CHECK_INTERVAL_SECONDS)
         except asyncio.TimeoutError:

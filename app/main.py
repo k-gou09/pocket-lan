@@ -8,7 +8,10 @@ http://ADRESSE_IP_DU_SERVEUR:8000.
 """
 
 import asyncio
+import os
 import socket
+import subprocess
+import sys
 from contextlib import asynccontextmanager
 
 import httpx
@@ -31,10 +34,16 @@ async def lifespan(application: FastAPI):
     application.state.gate = FifoGate(store.get_global_settings().get("maxParallel", 2))
     application.state.release = release.initial_state()
     application.state.release_stop = asyncio.Event()
+    application.state.admin_sessions = set()
+    application.state.restart_code = 0
+
+    async def on_release_change(state):
+        await application.state.hub.broadcast({"type": "update", "update": release.public_state(state)})
+
     print_startup()
     prune_task = asyncio.create_task(prune_loop(application.state.hub))
     release_task = asyncio.create_task(
-        release.loop(application.state.client, application.state.release, application.state.release_stop)
+        release.loop(application.state.client, application.state.release, application.state.release_stop, on_change=on_release_change)
     )
     try:
         yield
@@ -120,6 +129,8 @@ def json_ok(payload, sid=None):
 
 def snapshot(sid):
     settings = store.effective_settings(sid)
+    admins = getattr(app.state, "admin_sessions", set())
+    rel = getattr(app.state, "release", {})
     return {
         "session": store.ensure_session(sid),
         "settings": settings,
@@ -130,6 +141,9 @@ def snapshot(sid):
         "gate": gate().snapshot(),
         "personas": personas.list_personas(),
         "active_persona": personas.get_active(),
+        "update": release.public_state(rel) if rel else {},
+        "is_admin": sid in admins,
+        "admin_enabled": bool(config.ADMIN_TOKEN),
     }
 
 
@@ -299,6 +313,155 @@ async def select_model(request: Request):
 
     await hub().broadcast({"type": "model", "model": model_id, "result": result})
     return json_ok(result, sid)
+
+
+def is_admin(sid: str) -> bool:
+    return sid in getattr(app.state, "admin_sessions", set())
+
+
+def require_admin(sid: str) -> str:
+    if not config.ADMIN_TOKEN:
+        return "Administration désactivée (POCKET_ADMIN_TOKEN non configuré)."
+    if not is_admin(sid):
+        return "Accès administrateur requis."
+    return ""
+
+
+async def broadcast_update_state():
+    await hub().broadcast({"type": "update", "update": release.public_state(app.state.release)})
+
+
+@app.get("/api/update")
+async def get_update(request: Request):
+    sid = session_id(request)
+    return json_ok(
+        {
+            "update": release.public_state(app.state.release),
+            "is_admin": is_admin(sid),
+            "admin_enabled": bool(config.ADMIN_TOKEN),
+        },
+        sid,
+    )
+
+
+@app.post("/api/admin/login")
+async def admin_login(request: Request):
+    sid = session_id(request)
+    body = await request.json()
+    token = str(body.get("token") or "").strip()
+    if not config.ADMIN_TOKEN:
+        return json_ok({"error": "Administration désactivée (POCKET_ADMIN_TOKEN non configuré)."}, sid)
+    if token != config.ADMIN_TOKEN:
+        return json_ok({"error": "Jeton administrateur invalide."}, sid)
+    app.state.admin_sessions.add(sid)
+    await hub().send(sid, {"type": "admin", "is_admin": True})
+    return json_ok({"is_admin": True}, sid)
+
+
+@app.post("/api/admin/logout")
+async def admin_logout(request: Request):
+    sid = session_id(request)
+    app.state.admin_sessions.discard(sid)
+    await hub().send(sid, {"type": "admin", "is_admin": False})
+    return json_ok({"is_admin": False}, sid)
+
+
+def _git(args, cwd):
+    return subprocess.run(["git"] + args, cwd=cwd, capture_output=True, text=True, timeout=180)
+
+
+async def _apply_update_task(by_name: str):
+    state = app.state.release
+    repo_dir = str(config.BASE_DIR)
+    try:
+        state["applying"] = True
+        state["apply_status"] = "running"
+        state["apply_message"] = "Vérification du dépôt..."
+        state["applied_by"] = by_name
+        await broadcast_update_state()
+
+        st = _git(["status", "--porcelain"], repo_dir)
+        if st.returncode != 0:
+            raise RuntimeError("git status a échoué: " + (st.stderr or st.stdout).strip()[-300:])
+        tracked = [ln for ln in (st.stdout or "").splitlines() if ln and not ln.startswith("??")]
+        if tracked:
+            raise RuntimeError("Mise à jour refusée: des modifications locales suivies sont présentes.")
+
+        tag = str(state.get("latest") or "").strip()
+        if not tag:
+            raise RuntimeError("Aucune version cible disponible.")
+
+        state["apply_message"] = "Téléchargement (git fetch)..."
+        await broadcast_update_state()
+        r = _git(["fetch", "origin", "--tags", "--force"], repo_dir)
+        if r.returncode != 0:
+            raise RuntimeError("git fetch a échoué: " + (r.stderr or r.stdout).strip()[-400:])
+
+        state["apply_message"] = f"Application de {tag}..."
+        await broadcast_update_state()
+        r = _git(["checkout", "--force", f"tags/{tag}"], repo_dir)
+        if r.returncode != 0:
+            r = _git(["checkout", "--force", tag], repo_dir)
+        if r.returncode != 0:
+            raise RuntimeError("git checkout a échoué: " + (r.stderr or r.stdout).strip()[-400:])
+
+        req = config.BASE_DIR / "requirements.txt"
+        if req.exists():
+            state["apply_message"] = "Installation des dépendances..."
+            await broadcast_update_state()
+            pip = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-r", str(req)],
+                cwd=repo_dir,
+                capture_output=True,
+                text=True,
+                timeout=900,
+            )
+            if pip.returncode != 0:
+                err = (pip.stderr or pip.stdout or "").strip()
+                raise RuntimeError("pip install a échoué: " + err[-500:])
+
+        state["apply_status"] = "restarting"
+        state["apply_message"] = f"Mise à jour {tag} appliquée. Redémarrage..."
+        await broadcast_update_state()
+        await asyncio.sleep(1.5)
+        app.state.restart_code = 42
+        os._exit(42)
+    except Exception as err:  # noqa: BLE001
+        state["applying"] = False
+        state["apply_status"] = "error"
+        state["apply_message"] = str(err)
+        await broadcast_update_state()
+
+
+@app.post("/api/update/apply")
+async def apply_update(request: Request):
+    sid = session_id(request)
+    err = require_admin(sid)
+    if err:
+        return json_ok({"error": err}, sid)
+
+    body = await request.json()
+    force = bool(body.get("force"))
+
+    state = app.state.release
+    if state.get("applying"):
+        return json_ok({"error": "Mise à jour déjà en cours."}, sid)
+    if not state.get("update_available"):
+        return json_ok({"error": "Aucune mise à jour disponible."}, sid)
+
+    running = int(gate().snapshot().get("running", 0) or 0)
+    if running > 0 and not force:
+        return json_ok({"error": "Des réponses sont en cours. Réessaie quand c'est calme, ou relance avec force."}, sid)
+
+    who = (store.ensure_session(sid) or {}).get("name") or sid[:8]
+    state["applying"] = True
+    state["apply_status"] = "starting"
+    state["apply_message"] = f"Mise à jour lancée par {who}..."
+    state["applied_by"] = who
+    await broadcast_update_state()
+    asyncio.create_task(_apply_update_task(who))
+    return json_ok({"ok": True, "update": release.public_state(state)}, sid)
+
 
 
 # ---------------------------------------------------------------------------

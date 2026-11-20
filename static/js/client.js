@@ -48,6 +48,10 @@ const els = {
   serverInfo: $('serverInfo'),
   gateInfo: $('gateInfo'),
   toast: $('toast'),
+  updateBanner: $('updateBanner'),
+  updateText: $('updateText'),
+  btnUpdateApply: $('btnUpdateApply'),
+  btnUpdateDetails: $('btnUpdateDetails'),
   settingModel: $('settingModel'),
   settingContextLength: $('settingContextLength'),
   settingBudget: $('settingBudget'),
@@ -98,6 +102,9 @@ let lastSentText = '';
 let lastSpokenId = '';
 let streamSpeakId = '';
 let streamSpokenDone = false;
+let updateState = null;
+let isAdmin = false;
+let adminEnabled = false;
 let gateWaiting = 0;
 let stickToBottom = true;
 let typingEl = null;
@@ -198,8 +205,7 @@ function updateJumpPill() {
 function showTyping() {
   hideTyping();
   const wrap = document.createElement('div');
-  wrap.className = 'msg assistant';
-  wrap.dataset.messageId = messageId;
+  wrap.className = 'msg assistant typing';
   const bubble = document.createElement('div');
   bubble.className = 'bubble typing-bubble';
   for (let i = 0; i < 3; i += 1) {
@@ -273,8 +279,7 @@ function addMsgTime(wrap, ts) {
 // Erreur affichee dans la conversation, avec une chance de retenter.
 function appendErrorBubble(text) {
   const wrap = document.createElement('div');
-  wrap.className = 'msg assistant';
-  wrap.dataset.messageId = messageId;
+  wrap.className = 'msg assistant error-msg';
   const bubble = document.createElement('div');
   bubble.className = 'bubble error';
   const label = document.createElement('span');
@@ -506,6 +511,106 @@ function sendEvent(type, payload = {}) {
   return true;
 }
 
+
+function applyUpdatePayload(data) {
+  if (!data) return;
+  if (Object.prototype.hasOwnProperty.call(data, 'update')) updateState = data.update || null;
+  if (Object.prototype.hasOwnProperty.call(data, 'is_admin')) isAdmin = !!data.is_admin;
+  if (Object.prototype.hasOwnProperty.call(data, 'admin_enabled')) adminEnabled = !!data.admin_enabled;
+  renderUpdateBanner();
+}
+
+function renderUpdateBanner() {
+  if (!els.updateBanner || !els.updateText) return;
+  const u = updateState || {};
+  const available = !!u.update_available;
+  const applying = !!u.applying;
+  const status = String(u.apply_status || '');
+  const msg = String(u.apply_message || '');
+
+  let text = '';
+  let show = false;
+  if (applying) {
+    show = true;
+    text = msg || 'Mise à jour en cours...';
+  } else if (status === 'error' && msg) {
+    show = true;
+    text = 'Mise à jour : ' + msg;
+  } else if (available) {
+    show = true;
+    const latest = u.latest ? ` (${u.latest})` : '';
+    text = `Mise à jour disponible${latest}.`;
+  }
+
+  if (!show) {
+    els.updateBanner.hidden = true;
+    return;
+  }
+
+  els.updateText.textContent = text;
+  els.updateBanner.hidden = false;
+
+  const canShowApply = available && !applying;
+  els.btnUpdateApply.hidden = !canShowApply;
+  els.btnUpdateApply.disabled = !!applying;
+  els.btnUpdateApply.textContent = isAdmin ? 'Mettre à jour' : 'Mettre à jour (admin)';
+
+  const hasUrl = !!u.url;
+  els.btnUpdateDetails.hidden = !hasUrl;
+}
+
+async function ensureAdminAccess() {
+  if (isAdmin) return true;
+  if (!adminEnabled) {
+    showToast("Mise à jour admin indisponible : configure POCKET_ADMIN_TOKEN sur le serveur.");
+    return false;
+  }
+  const token = window.prompt('Jeton administrateur (POCKET_ADMIN_TOKEN) :');
+  if (!token) return false;
+  try {
+    const res = await fetch('/api/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      showToast(data.error);
+      return false;
+    }
+    applyUpdatePayload(data);
+    return !!data.is_admin;
+  } catch (err) {
+    showToast('Connexion admin impossible : ' + err);
+    return false;
+  }
+}
+
+async function triggerUpdateApply() {
+  const ok = await ensureAdminAccess();
+  if (!ok) return;
+  els.btnUpdateApply.disabled = true;
+  try {
+    const res = await fetch('/api/update/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    if (data.error) {
+      showToast(data.error);
+      els.btnUpdateApply.disabled = false;
+      return;
+    }
+    applyUpdatePayload(data);
+    showToast('Mise à jour lancée. Le serveur va redémarrer.');
+  } catch (err) {
+    showToast('Impossible de lancer la mise à jour : ' + err);
+    els.btnUpdateApply.disabled = false;
+  }
+}
+
+
 function connect() {
   const url = new URL('/ws', location.href);
   if (session) url.searchParams.set('sid', session.id);
@@ -561,6 +666,7 @@ function handleEvent(data) {
       conversations = data.data.conversations || [];
       renderSettings();
       renderParticipants(data.data.participants || []);
+      applyUpdatePayload(data.data);
       if (!current && conversations.length) openConversation(conversations[0].id);
       break;
     }
@@ -732,6 +838,15 @@ function handleEvent(data) {
       conversations = conversations.filter((c) => c.id !== data.conv_id);
       if (current && current.id === data.conv_id) current = null;
       renderConversationList();
+      break;
+
+    case 'update':
+      applyUpdatePayload(data);
+      break;
+
+    case 'admin':
+      applyUpdatePayload(data);
+      if (data.is_admin) showToast('Mode administrateur activé.');
       break;
 
     case 'pong':
@@ -1111,6 +1226,17 @@ function bind() {
 
   els.settingPersona.addEventListener('change', () => sendGlobalPatch({ persona: els.settingPersona.value }));
 
+  if (els.btnUpdateApply) {
+    els.btnUpdateApply.addEventListener('click', () => { triggerUpdateApply(); });
+  }
+  if (els.btnUpdateDetails) {
+    els.btnUpdateDetails.addEventListener('click', () => {
+      const url = updateState && updateState.url;
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    });
+  }
+
+
   els.btnApplyModel.addEventListener('click', async () => {
     const response = await fetch('/api/model/select', {
       method: 'POST',
@@ -1149,6 +1275,7 @@ async function boot() {
     globalSettings = data.settings;
     personasList = data.personas || [];
     conversations = data.conversations || [];
+    applyUpdatePayload(data);
     renderSettings();
     const last = localStorage.getItem(CURRENT_KEY);
     if (last && conversations.some((c) => c.id === last)) await openConversation(last);
