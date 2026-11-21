@@ -10,6 +10,8 @@ Pocket LAN combine une interface moderne, un avatar animé, la synthèse vocale 
 
 **Aucune API payante. Aucun abonnement. Vos données restent chez vous.**
 
+🌐 **Page du projet :** https://k-gou09.github.io/pocket-lan/
+
 Construit pour être simple :
 
 - Installer
