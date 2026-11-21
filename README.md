@@ -16,10 +16,6 @@ Construit pour être simple :
 - Lancer
 - Discuter
 
-## Aperçu
-
-![Aperçu de Pocket LAN](pre.png)
-
 ## ✨ Fonctionnalités
 
 - 💬 Chat IA local via LM Studio
