@@ -2,8 +2,8 @@
 // Les modules d'animation (avatar, lip-sync, voix, dictee) sont repris du projet
 // d'origine : ils ne dependent pas du moteur d'infrence, seulement des evenements.
 
-import { Avatar } from './avatar.js';
-import { Speaker } from './tts.js';
+import { AvatarSwitch } from './avatar-switch.js';
+import { Speaker, isFeminineVoice } from './tts.js';
 import { Dictation } from './dictation.js';
 import { Bus } from './bus.js';
 
@@ -61,7 +61,9 @@ const els = {
   settingTts: $('settingTts'),
   settingMic: $('settingMic'),
   settingAutoSend: $('settingAutoSend'),
+  settingAvatar: $('settingAvatar'),
   settingVoice: $('settingVoice'),
+  settingVoiceLabel: $('settingVoiceLabel'),
   settingPersona: $('settingPersona'),
   btnApplyModel: $('btnApplyModel'),
   btnCloseDrawer: $('btnCloseDrawer'),
@@ -78,7 +80,7 @@ const STATE_LABELS = {
 };
 
 const bus = new Bus();
-const avatar = new Avatar(els.avatarStage);
+const avatar = new AvatarSwitch(els.avatarStage);
 const speaker = new Speaker(avatar, { lang: 'fr-FR' });
 const dictation = new Dictation({ lang: 'fr-FR', continuous: true, interimResults: true });
 
@@ -923,14 +925,23 @@ function renderSettings() {
   els.btnDictation.disabled = !settings.mic;
   els.btnMic.disabled = !settings.mic;
 
-  // La voix choisie est appliquee a ce navigateur seulement : elle n'est pas
-  // partagee avec les autres utilisateurs.
-  speaker.preferredVoice = settings.voice || '';
+  // L'avatar et sa voix sont des reglages par utilisateur. Nova demarre sur une
+  // voix feminine si le navigateur en expose une, sinon sur la voix francaise
+  // par defaut ; l'utilisateur peut toujours la remplacer dans la liste.
+  avatar.use(settings.avatar || 'pocket');
+  const nova = avatar.id === 'nova';
+  speaker.preferFeminine = nova;
+  speaker.preferredVoice = (nova ? settings.voiceNova : settings.voice) || '';
   speaker.refreshVoices();
+  if (els.settingAvatar) els.settingAvatar.value = avatar.id;
+  if (els.settingVoiceLabel) {
+    els.settingVoiceLabel.textContent = nova ? 'Voix de Nova (féminine)' : 'Voix (navigateur)';
+  }
   fillVoices();
 }
 
 function fillVoices() {
+  const key = avatar.id === 'nova' ? 'voiceNova' : 'voice';
   els.settingVoice.innerHTML = '';
   const option = document.createElement('option');
   option.value = '';
@@ -940,8 +951,10 @@ function fillVoices() {
   for (const voice of speaker.voices) {
     const choice = document.createElement('option');
     choice.value = voice.name;
-    choice.textContent = voice.name + (voice.localService ? '' : ' (en ligne)');
-    if (settings.voice && voice.name === settings.voice) choice.selected = true;
+    choice.textContent = voice.name
+      + (isFeminineVoice(voice.name) ? ' ♀' : '')
+      + (voice.localService ? '' : ' (en ligne)');
+    if (settings[key] && voice.name === settings[key]) choice.selected = true;
     els.settingVoice.appendChild(choice);
   }
 }
@@ -1216,8 +1229,13 @@ function bind() {
   els.settingAutoSend.addEventListener('click', () => sendSettingsPatch({ autoSend: !settings.autoSend }));
   els.settingReasoning.addEventListener('click', () => sendSettingsPatch({ showReasoning: !settings.showReasoning }));
 
+  if (els.settingAvatar) {
+    els.settingAvatar.addEventListener('change', () => sendSettingsPatch({ avatar: els.settingAvatar.value }));
+  }
+
   els.settingVoice.addEventListener('change', () => {
-    sendSettingsPatch({ voice: els.settingVoice.value });
+    const key = avatar.id === 'nova' ? 'voiceNova' : 'voice';
+    sendSettingsPatch({ [key]: els.settingVoice.value });
   });
 
   els.settingBudget.addEventListener('change', () => sendSettingsPatch({ contextBudget: Number(els.settingBudget.value) || 0 }));

@@ -64,6 +64,9 @@ async def prune_loop(hub):
 
 app = FastAPI(title="Pocket LAN", version=__version__, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(config.STATIC_DIR), html=True), name="static")
+# Les exemples d'avatars (nova.html, holo.html) servent aussi de second avatar
+# integre : ils sont charges dans une iframe avec le meme runtime que l'UI.
+app.mount("/avatar", StaticFiles(directory=str(config.BASE_DIR / "avatar"), html=True), name="avatar")
 
 
 @app.middleware("http")

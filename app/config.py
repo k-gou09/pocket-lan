@@ -106,6 +106,8 @@ SESSION_DEFAULTS = {
     "autoSend": True,
     "showReasoning": False,
     "voice": "",
+    "voiceNova": "",
+    "avatar": "pocket",
 }
 
 COOKIE_NAME = "pocket_sid"

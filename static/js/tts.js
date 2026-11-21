@@ -8,6 +8,15 @@ import { LipSync } from './speech.js';
 const SPLIT_SENTENCES = /(?<=[.!?…])\s+/;
 const SENTENCE_END = /[.!?…](?:["')\]]+)?\s*$/;
 
+// speechSynthesis n'expose aucun champ "gender" : on reconnait les voix
+// feminines courantes par leur nom. L'utilisateur peut toujours en choisir
+// une autre dans les reglages (choix sauvegarde par avatar).
+const FEMININE_VOICE = /(am[ée]lie|anna|aria|c[ée]line|charlotte|chlo[ée]|claire|fiona|hortense|julie|karen|l[ée]a|lucie|manon|marie|mathilde|nora|nova|samantha|sonia|sophie|valentine|v[ée]ronique|zira|zo[ée])/i;
+
+export function isFeminineVoice(name) {
+  return FEMININE_VOICE.test(String(name || ''));
+}
+
 export function splitSentences(text) {
   return String(text ?? '')
     .replace(/\s+/g, ' ')
@@ -32,12 +41,13 @@ function extractCompleteSentences(buffer) {
 }
 
 export class Speaker {
-  constructor(avatar, { lang = 'fr-FR', rate = 1, pitch = 1.02, volume = 1, preferredVoice = '' } = {}) {
+  constructor(avatar, { lang = 'fr-FR', rate = 1, pitch = 1.02, volume = 1, preferredVoice = '', preferFeminine = false } = {}) {
     this.avatar = avatar;
     this.lang = lang;
     // Voix choisie par l'utilisateur dans les reglages. refreshVoices() la remet
     // en avant a chaque lecture, sinon le choix serait ecrase par la voix par defaut.
     this.preferredVoice = preferredVoice || '';
+    this.preferFeminine = !!preferFeminine;
     this.rate = Math.min(1.5, Math.max(0.7, Number(rate) || 1));
     this.pitch = pitch;
     this.volume = volume;
@@ -90,7 +100,11 @@ export class Speaker {
     const preferred = this.preferredVoice ? this.voices.find((v) => v.name === this.preferredVoice) : null;
     const local = this.voices.find((v) => v.localService && /fr[-_]FR/i.test(v.lang));
     const anyFrench = this.voices.find((v) => /fr[-_]FR/i.test(v.lang)) || this.voices[0];
-    this.voice = preferred || local || anyFrench || null;
+    const feminine = this.preferFeminine
+      ? (this.voices.find((v) => /fr[-_]FR/i.test(v.lang) && v.localService && isFeminineVoice(v.name))
+        || this.voices.find((v) => isFeminineVoice(v.name)))
+      : null;
+    this.voice = preferred || feminine || local || anyFrench || null;
 
     if (!this._voicesBound) {
       this._voicesBound = true;

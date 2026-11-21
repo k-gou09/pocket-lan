@@ -20,6 +20,7 @@ Construit pour être simple :
 
 - 💬 Chat IA local via LM Studio
 - 🤖 Avatar animé synchronisé avec la parole
+- 🎭 Deux avatars au choix dans les réglages (Pocket et Nova, avec voix féminine)
 - 💾 Conversations sauvegardées automatiquement
 - 🔊 Synthèse vocale intégrée
 - 🖥️ Mode plein écran pour l'avatar

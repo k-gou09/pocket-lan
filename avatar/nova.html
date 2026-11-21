@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>Nova — avatar d'exemple</title>
+  <style>
+    /* =====================================================================
+       Nova — avatar d'exemple autonome.
+       Tout le HTML et tout le CSS sont dans ce seul fichier.
+       Le JS commun est dans ./avatar-runtime.js
+       ===================================================================== */
+
+    :root {
+      --accent: #9b8cff;
+      --accent-2: #5ee7ff;
+      --accent-soft: rgba(155, 140, 255, 0.35);
+      --ink: #eef0ff;
+      --muted: #9aa3c0;
+      --panel: rgba(18, 17, 38, 0.78);
+      --line: rgba(155, 140, 255, 0.22);
+      --bg: #080713;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 18px;
+    }
+
+    .avatar-screen {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      width: min(1080px, 100%);
+      min-height: min(860px, calc(100vh - 36px));
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: #0a0918;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+      isolation: isolate;
+    }
+
+    .avatar-scene {
+      position: relative;
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 430px;
+      padding: 12px 18px 0;
+      overflow: hidden;
+    }
+
+    .avatar-scene::before,
+    .avatar-scene::after {
+      content: "";
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(62px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .avatar-scene::before {
+      width: 120%;
+      height: 66%;
+      top: -22%;
+      left: -16%;
+      background: radial-gradient(circle at 50% 50%, rgba(155, 140, 255, 0.36), transparent 68%);
+      animation: nvAuroraA 18s ease-in-out infinite alternate;
+    }
+
+    .avatar-scene::after {
+      width: 110%;
+      height: 60%;
+      bottom: -24%;
+      right: -22%;
+      background: radial-gradient(circle at 50% 50%, rgba(94, 231, 255, 0.24), transparent 70%);
+      animation: nvAuroraB 22s ease-in-out infinite alternate;
+    }
+
+    .avatar-veil {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+      background:
+        radial-gradient(68% 50% at 50% 46%, transparent 40%, rgba(8, 7, 19, 0.62) 100%),
+        linear-gradient(180deg, rgba(8, 7, 19, 0.5), transparent 24%, transparent 68%, rgba(8, 7, 19, 0.88));
+    }
+
+    .avatar-stage-wrap {
+      position: relative;
+      z-index: 2;
+      flex: 1 1 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 0;
+    }
+
+    .avatar-stage {
+      position: relative;
+      z-index: 2;
+      width: min(100%, 430px);
+      aspect-ratio: 400 / 470;
+      max-height: 100%;
+      margin: 0 auto;
+      --gaze-x: 0px;
+      --gaze-y: 0px;
+      --jaw: 0;
+    }
+
+    .av-svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    /* ---------- Matières ---------- */
+
+    .av-halo {
+      fill: url(#nvHaloGrad);
+      opacity: 0.68;
+      transition: opacity 0.6s ease;
+    }
+
+    .av-ring {
+      fill: none;
+      stroke: rgba(155, 140, 255, 0.2);
+      stroke-width: 1.4;
+      transform-box: view-box;
+      transform-origin: 200px 236px;
+      transition: stroke 0.4s ease, opacity 0.4s ease;
+    }
+
+    .av-ring-1 { stroke-dasharray: 3 10; animation: nvSpin 44s linear infinite; }
+    .av-ring-2 { stroke-dasharray: 1 14; opacity: 0.72; animation: nvSpin 62s linear infinite reverse; }
+    .av-shadow { fill: rgba(0, 0, 0, 0.5); filter: blur(7px); }
+
+    .av-head { fill: url(#nvHeadGrad); }
+    .av-head-edge { fill: none; stroke: #514a86; stroke-width: 2.4; }
+    .av-visor { fill: url(#nvVisorGrad); stroke: rgba(94, 231, 255, 0.22); stroke-width: 1.6; }
+    .av-visor-sheen { fill: url(#nvSheenGrad); opacity: 0.6; }
+
+    .av-antenna { stroke: #6b62b5; stroke-width: 4; stroke-linecap: round; }
+    .av-antenna-ball {
+      fill: var(--accent-2);
+      filter: drop-shadow(0 0 12px rgba(94, 231, 255, 0.8));
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: nvAntenna 3.2s ease-in-out infinite;
+    }
+    .av-antenna-glow { fill: url(#nvEyeGlow); opacity: 0.75; transition: opacity 0.4s ease; }
+
+    .av-neck { fill: #292453; stroke: #514a86; stroke-width: 2; }
+    .av-torso { fill: url(#nvTorsoGrad); stroke: #514a86; stroke-width: 2.4; }
+    .av-torso-sheen { fill: url(#nvSheenGrad); opacity: 0.5; }
+    .av-arm { fill: #2b2657; stroke: #514a86; stroke-width: 2; }
+
+    .av-chest-ring {
+      fill: none;
+      stroke: var(--accent-2);
+      stroke-width: 1.6;
+      opacity: 0.32;
+      transform-box: fill-box;
+      transform-origin: center;
+    }
+
+    .av-chest {
+      fill: var(--accent-2);
+      opacity: 0.92;
+      filter: drop-shadow(0 0 9px rgba(94, 231, 255, 0.75));
+      transform-box: fill-box;
+      transform-origin: center;
+    }
+
+    .av-body { transform-box: view-box; transform-origin: 200px 420px; }
+    .av-head-group {
+      transform-box: view-box;
+      transform-origin: 200px 330px;
+      transition: transform 0.55s cubic-bezier(0.22, 0.8, 0.24, 1);
+    }
+
+    /* ---------- Yeux ---------- */
+
+    .av-eye-glow { fill: url(#nvEyeGlow); opacity: 0.55; transition: opacity 0.4s ease; }
+
+    .av-eye .av-lens {
+      fill: var(--accent-2);
+      filter: drop-shadow(0 0 13px rgba(94, 231, 255, 0.55));
+      transform-box: fill-box;
+      transform-origin: center;
+      transition: transform 0.16s ease, fill 0.35s ease;
+    }
+
+    .av-pupil { transform: translate(var(--gaze-x), var(--gaze-y)); transition: transform 0.5s cubic-bezier(0.2, 0.75, 0.25, 1); }
+    .av-pupil-core { fill: #0a0a1c; transition: transform 0.3s ease; transform-box: fill-box; transform-origin: center; }
+    .av-glint { fill: #ffffff; opacity: 0.9; }
+
+    .av-eyes-happy { opacity: 0; transition: opacity 0.25s ease; }
+    .av-eyes-happy path {
+      fill: none;
+      stroke: var(--accent-2);
+      stroke-width: 10;
+      stroke-linecap: round;
+      filter: drop-shadow(0 0 10px rgba(94, 231, 255, 0.6));
+    }
+
+    .av-think { opacity: 0; transition: opacity 0.3s ease; }
+    .av-think circle { fill: var(--accent); opacity: 0.9; transform-box: fill-box; transform-origin: center; }
+
+    /* ---------- Bouche / visèmes ---------- */
+
+    .av-mouths { transform-box: view-box; transform-origin: 200px 268px; }
+
+    .av-mouth {
+      fill: var(--accent-2);
+      opacity: 0;
+      transform-box: fill-box;
+      transform-origin: center;
+      transition: opacity 0.07s linear, transform 0.09s ease-out;
+      filter: drop-shadow(0 0 8px rgba(94, 231, 255, 0.55));
+    }
+
+    .av-mouth-rest,
+    .av-mouth-smile,
+    .av-mouth-frown { stroke: var(--accent-2); stroke-linecap: round; }
+    .av-mouth-smile,
+    .av-mouth-frown { fill: none; stroke-width: 9; }
+
+    .avatar-stage[data-viseme="rest"] .av-mouth-rest { opacity: 1; }
+    .avatar-stage[data-viseme="a"] .av-mouth-a { opacity: 1; transform: scale(calc(0.9 + 0.1 * var(--jaw)), calc(0.74 + 0.26 * var(--jaw))); }
+    .avatar-stage[data-viseme="e"] .av-mouth-e { opacity: 1; transform: scale(calc(0.92 + 0.08 * var(--jaw)), calc(0.72 + 0.28 * var(--jaw))); }
+    .avatar-stage[data-viseme="i"] .av-mouth-i { opacity: 1; transform: scale(calc(0.86 + 0.14 * var(--jaw)), calc(0.76 + 0.24 * var(--jaw))); }
+    .avatar-stage[data-viseme="o"] .av-mouth-o { opacity: 1; transform: scale(calc(0.74 + 0.26 * var(--jaw)), calc(0.74 + 0.26 * var(--jaw))); }
+    .avatar-stage[data-viseme="u"] .av-mouth-u { opacity: 1; transform: scale(calc(0.7 + 0.3 * var(--jaw)), calc(0.7 + 0.3 * var(--jaw))); }
+    .avatar-stage[data-viseme="smile"] .av-mouth-smile { opacity: 1; }
+
+    /* ---------- Émotions ---------- */
+
+    .avatar-stage[data-emotion="happy"] .av-eyes { opacity: 0; }
+    .avatar-stage[data-emotion="happy"] .av-eyes-happy { opacity: 1; }
+
+    .avatar-stage[data-emotion="happy"][data-viseme="rest"] .av-mouth-rest,
+    .avatar-stage[data-emotion="sad"][data-viseme="rest"] .av-mouth-rest,
+    .avatar-stage[data-emotion="angry"][data-viseme="rest"] .av-mouth-rest { opacity: 0; }
+
+    .avatar-stage[data-emotion="happy"][data-viseme="rest"] .av-mouth-smile { opacity: 1; }
+    .avatar-stage[data-emotion="sad"][data-viseme="rest"] .av-mouth-frown,
+    .avatar-stage[data-emotion="angry"][data-viseme="rest"] .av-mouth-frown { opacity: 1; }
+
+    .avatar-stage[data-emotion="sad"] .av-eye-glow { opacity: 0.28; }
+    .avatar-stage[data-emotion="sad"] .av-lens { transform: scaleY(0.62); }
+    .avatar-stage[data-emotion="sad"] .av-head-group { transform: rotate(-1.5deg) translateY(3px); }
+
+    .avatar-stage[data-emotion="surprised"] .av-lens { transform: scale(1.08); }
+    .avatar-stage[data-emotion="surprised"] .av-pupil-core { transform: scale(0.62); }
+    .avatar-stage[data-emotion="surprised"][data-viseme="rest"] .av-mouth-rest { opacity: 0; }
+    .avatar-stage[data-emotion="surprised"][data-viseme="rest"] .av-mouth-o { opacity: 1; transform: scale(0.8); }
+
+    .avatar-stage[data-emotion="curious"] .av-head-group { transform: rotate(-4.5deg); }
+    .avatar-stage[data-emotion="curious"] .av-eye-left .av-lens { transform: scale(1.07); }
+    .avatar-stage[data-emotion="curious"][data-viseme="rest"] .av-mouth-rest { opacity: 0; }
+    .avatar-stage[data-emotion="curious"][data-viseme="rest"] .av-mouth-u { opacity: 1; transform: scale(0.85); }
+
+    .avatar-stage[data-emotion="angry"] .av-eye-glow { fill: none; opacity: 0; }
+    .avatar-stage[data-emotion="angry"] .av-lens { fill: #ff9d8a; filter: drop-shadow(0 0 12px rgba(255, 123, 123, 0.6)); }
+    .avatar-stage[data-emotion="angry"] .av-eye-left .av-lens { transform: rotate(7deg) scaleY(0.78); }
+    .avatar-stage[data-emotion="angry"] .av-eye-right .av-lens { transform: rotate(-7deg) scaleY(0.78); }
+    .avatar-stage[data-emotion="angry"] .av-mouth-frown { stroke: #ff9d8a; }
+
+    .avatar-stage[data-emotion="sleepy"] .av-lens { transform: scaleY(0.3); }
+    .avatar-stage[data-emotion="sleepy"] .av-pupil { opacity: 0.5; }
+    .avatar-stage[data-emotion="sleepy"] .av-antenna-ball { animation-duration: 6.5s; }
+
+    /* ---------- États ---------- */
+
+    .avatar-stage[data-state="idle"] .av-halo { opacity: 0.5; }
+    .avatar-stage[data-state="idle"] .av-body { animation: nvBob 7.2s ease-in-out infinite; }
+
+    .avatar-stage[data-state="listening"] .av-eye-glow { opacity: 0.95; }
+    .avatar-stage[data-state="listening"] .av-ring-1 { animation: nvRipple 2.6s ease-out infinite; }
+    .avatar-stage[data-state="listening"] .av-ring-2 { animation: nvRipple 2.6s ease-out 1.3s infinite; }
+    .avatar-stage[data-state="listening"] .av-chest-ring { opacity: 0.85; animation: nvChest 1.3s ease-in-out infinite; }
+    .avatar-stage[data-state="listening"] .av-body { animation: nvBob 4.2s ease-in-out infinite; }
+
+    .avatar-stage[data-state="thinking"] .av-think { opacity: 1; }
+    .avatar-stage[data-state="thinking"] .av-think circle { animation: nvDot 1.1s ease-in-out infinite; }
+    .avatar-stage[data-state="thinking"] .av-think circle:nth-child(2) { animation-delay: 0.16s; }
+    .avatar-stage[data-state="thinking"] .av-think circle:nth-child(3) { animation-delay: 0.32s; }
+    .avatar-stage[data-state="thinking"] .av-head-group { animation: nvThink 6s ease-in-out infinite; }
+    .avatar-stage[data-state="thinking"] .av-ring-1 { animation: nvSpin 14s linear infinite; }
+    .avatar-stage[data-state="thinking"] .av-chest { animation: nvChest 1s ease-in-out infinite; }
+
+    .avatar-stage[data-state="speaking"] .av-halo { opacity: 1; }
+    .avatar-stage[data-state="speaking"] .av-body { animation: nvSpeakBob 1.5s ease-in-out infinite; }
+    .avatar-stage[data-state="speaking"] .av-ring-1 { animation: nvSpin 22s linear infinite; stroke: rgba(94, 231, 255, 0.3); }
+    .avatar-stage[data-state="speaking"] .av-chest-ring { opacity: 0.78; }
+
+    .avatar-stage[data-state="error"] .av-halo { fill: none; opacity: 0; }
+    .avatar-stage[data-state="error"] .av-eye-glow { fill: none; opacity: 0; }
+    .avatar-stage[data-state="error"] .av-lens { fill: #ff9d8a; filter: drop-shadow(0 0 12px rgba(255, 123, 123, 0.65)); }
+    .avatar-stage[data-state="error"] .av-chest,
+    .avatar-stage[data-state="error"] .av-antenna-ball { fill: #ff7b7b; filter: drop-shadow(0 0 12px rgba(255, 123, 123, 0.8)); }
+    .avatar-stage[data-state="error"] .av-head-group { animation: nvShake 0.6s ease-in-out 2; }
+    .avatar-stage[data-state="error"] .av-mouth-rest { opacity: 0; }
+    .avatar-stage[data-state="error"] .av-mouth-frown { opacity: 1; stroke: #ff9d8a; }
+
+    /* Clignement en dernier pour primer sur les humeurs. */
+    .avatar-stage.is-blinking .av-lens,
+    .avatar-stage.is-blinking .av-eye .av-lens { transform: scaleY(0.06); transition: transform 0.09s ease-in; }
+    .avatar-stage.is-blinking .av-eyes-happy { opacity: 0; }
+    .avatar-stage.is-blinking .av-pupil,
+    .avatar-stage.is-blinking .av-glint { opacity: 0; }
+
+    /* ---------- HUD ---------- */
+
+    .avatar-hud {
+      position: relative;
+      z-index: 3;
+      padding: 14px 18px 18px;
+      border-top: 1px solid var(--line);
+      background: var(--panel);
+      backdrop-filter: blur(12px);
+    }
+
+    .avatar-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .avatar-title h1 { margin: 0; font-size: 18px; letter-spacing: 0.02em; }
+    .avatar-title span { color: var(--muted); font-size: 12px; }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin: 8px 0;
+    }
+
+    .row-label {
+      width: 74px;
+      flex: 0 0 auto;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .chip {
+      appearance: none;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(155, 140, 255, 0.06);
+      color: var(--ink);
+      font: inherit;
+      font-size: 12px;
+      padding: 6px 11px;
+      cursor: pointer;
+      transition: background 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+    }
+
+    .chip:hover { background: rgba(155, 140, 255, 0.14); }
+    .chip:active { transform: scale(0.96); }
+    .chip.is-active { border-color: var(--accent-2); background: rgba(94, 231, 255, 0.16); color: #dffaff; }
+
+    .speak-btn {
+      appearance: none;
+      border: 1px solid rgba(94, 231, 255, 0.45);
+      border-radius: 999px;
+      background: linear-gradient(135deg, rgba(155, 140, 255, 0.35), rgba(94, 231, 255, 0.25));
+      color: #f4f7ff;
+      font: inherit;
+      font-size: 13px;
+      padding: 8px 16px;
+      cursor: pointer;
+    }
+
+    .speak-btn:disabled { opacity: 0.5; cursor: default; }
+    .hint { margin: 10px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+
+    .avatar-screen [hidden] { display: none !important; }
+
+    /* ---------- Animations ---------- */
+
+    @keyframes nvBob {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-7px); }
+    }
+
+    @keyframes nvSpeakBob {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      30% { transform: translateY(-3px) rotate(-0.4deg); }
+      70% { transform: translateY(-1px) rotate(0.4deg); }
+    }
+
+    @keyframes nvThink {
+      0%, 100% { transform: rotate(-1.2deg); }
+      50% { transform: rotate(1.6deg) translateY(-2px); }
+    }
+
+    @keyframes nvShake {
+      0%, 100% { transform: translateX(0) rotate(0deg); }
+      25% { transform: translateX(-5px) rotate(-1deg); }
+      75% { transform: translateX(5px) rotate(1deg); }
+    }
+
+    @keyframes nvAntenna {
+      0%, 100% { transform: scale(1); opacity: 0.92; }
+      50% { transform: scale(1.14); opacity: 1; }
+    }
+
+    @keyframes nvChest {
+      0%, 100% { transform: scale(1); opacity: 0.6; }
+      50% { transform: scale(1.22); opacity: 1; }
+    }
+
+    @keyframes nvRipple {
+      0% { transform: scale(0.94); opacity: 0; }
+      25% { opacity: 0.75; }
+      100% { transform: scale(1.14); opacity: 0; }
+    }
+
+    @keyframes nvSpin { to { transform: rotate(360deg); } }
+
+    @keyframes nvDot {
+      0%, 100% { transform: translateY(0); opacity: 0.45; }
+      50% { transform: translateY(-5px); opacity: 1; }
+    }
+
+    @keyframes nvAuroraA {
+      from { transform: translate3d(0, 0, 0) scale(1); }
+      to { transform: translate3d(6%, 4%, 0) scale(1.08); }
+    }
+
+    @keyframes nvAuroraB {
+      from { transform: translate3d(0, 0, 0) scale(1.05); }
+      to { transform: translate3d(-5%, -4%, 0) scale(1); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .avatar-scene::before,
+      .avatar-scene::after,
+      .avatar-stage .av-body,
+      .avatar-stage .av-head-group,
+      .avatar-stage .av-ring,
+      .avatar-stage .av-antenna-ball,
+      .avatar-stage .av-chest,
+      .avatar-stage .av-chest-ring,
+      .avatar-stage .av-think circle { animation: none !important; }
+      .avatar-stage .av-pupil { transition: none; }
+    }
+
+    /* Mode integre dans Pocket LAN (?embed=1) : uniquement l'avatar, sans HUD. */
+    body.is-embed { padding: 0; background: transparent; overflow: hidden; }
+    body.is-embed .avatar-screen {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    body.is-embed .avatar-scene { min-height: 0; padding: 0; }
+    body.is-embed .avatar-veil,
+    body.is-embed .avatar-hud { display: none; }
+  </style>
+</head>
+<body>
+  <div class="avatar-screen">
+    <div class="avatar-scene">
+      <div class="avatar-veil"></div>
+      <div class="avatar-stage-wrap">
+        <div id="novaStage" class="avatar-stage" aria-hidden="true">
+          <svg class="av-svg" viewBox="0 0 400 470" focusable="false">
+            <defs>
+              <radialGradient id="nvEyeGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#5ee7ff" stop-opacity="0.55" />
+                <stop offset="100%" stop-color="#5ee7ff" stop-opacity="0" />
+              </radialGradient>
+              <radialGradient id="nvHaloGrad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#9b8cff" stop-opacity="0.2" />
+                <stop offset="55%" stop-color="#5ee7ff" stop-opacity="0.07" />
+                <stop offset="100%" stop-color="#5ee7ff" stop-opacity="0" />
+              </radialGradient>
+              <linearGradient id="nvVisorGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#151331" />
+                <stop offset="100%" stop-color="#090818" />
+              </linearGradient>
+              <linearGradient id="nvHeadGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#4a4280" />
+                <stop offset="55%" stop-color="#332d63" />
+                <stop offset="100%" stop-color="#241f4a" />
+              </linearGradient>
+              <linearGradient id="nvTorsoGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#3b346d" />
+                <stop offset="100%" stop-color="#221e48" />
+              </linearGradient>
+              <linearGradient id="nvSheenGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#ffffff" stop-opacity="0.12" />
+                <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+
+            <circle class="av-halo" cx="200" cy="236" r="188" />
+            <g class="av-rings">
+              <circle class="av-ring av-ring-1" cx="200" cy="236" r="151" />
+              <circle class="av-ring av-ring-2" cx="200" cy="236" r="169" />
+            </g>
+            <ellipse class="av-shadow" cx="200" cy="452" rx="98" ry="12" />
+
+            <g class="av-body">
+              <g class="av-head-group">
+                <path class="av-antenna" d="M186 96 L170 66 M214 96 L230 66" />
+                <circle class="av-antenna-glow" cx="170" cy="56" r="26" />
+                <circle class="av-antenna-glow" cx="230" cy="56" r="26" />
+                <circle class="av-antenna-ball" cx="170" cy="56" r="12" />
+                <circle class="av-antenna-ball" cx="230" cy="56" r="12" />
+
+                <rect class="av-head" x="56" y="92" width="288" height="236" rx="96" />
+                <rect class="av-head-edge" x="56" y="92" width="288" height="236" rx="96" />
+                <rect class="av-visor" x="84" y="118" width="232" height="184" rx="76" />
+                <rect class="av-visor-sheen" x="94" y="126" width="212" height="62" rx="56" />
+
+                <g class="av-eyes">
+                  <circle class="av-eye-glow" cx="152" cy="198" r="52" />
+                  <circle class="av-eye-glow" cx="248" cy="198" r="52" />
+                  <g class="av-eye av-eye-left">
+                    <ellipse class="av-lens" cx="152" cy="198" rx="34" ry="29" />
+                    <g class="av-pupil">
+                      <circle class="av-pupil-core" cx="152" cy="198" r="13" />
+                      <circle class="av-glint" cx="147" cy="192" r="4" />
+                    </g>
+                  </g>
+                  <g class="av-eye av-eye-right">
+                    <ellipse class="av-lens" cx="248" cy="198" rx="34" ry="29" />
+                    <g class="av-pupil">
+                      <circle class="av-pupil-core" cx="248" cy="198" r="13" />
+                      <circle class="av-glint" cx="243" cy="192" r="4" />
+                    </g>
+                  </g>
+                </g>
+
+                <g class="av-eyes-happy">
+                  <path d="M120 206 q32 -28 64 0" />
+                  <path d="M216 206 q32 -28 64 0" />
+                </g>
+
+                <g class="av-mouths">
+                  <rect class="av-mouth av-mouth-rest" x="176" y="266" width="48" height="10" rx="5" />
+                  <path class="av-mouth av-mouth-smile" d="M162 258 q38 30 76 0" />
+                  <path class="av-mouth av-mouth-frown" d="M166 282 q34 -26 68 0" />
+                  <ellipse class="av-mouth av-mouth-a" cx="200" cy="267" rx="29" ry="22" />
+                  <rect class="av-mouth av-mouth-e" x="160" y="253" width="80" height="30" rx="15" />
+                  <rect class="av-mouth av-mouth-i" x="184" y="245" width="32" height="47" rx="15" />
+                  <circle class="av-mouth av-mouth-o" cx="200" cy="269" r="22" />
+                  <circle class="av-mouth av-mouth-u" cx="200" cy="270" r="14" />
+                </g>
+
+                <g class="av-think">
+                  <circle cx="312" cy="90" r="6" />
+                  <circle cx="334" cy="72" r="7" />
+                  <circle cx="356" cy="88" r="8" />
+                </g>
+              </g>
+
+              <rect class="av-neck" x="182" y="320" width="36" height="28" rx="13" />
+              <rect class="av-torso" x="106" y="344" width="188" height="90" rx="44" />
+              <rect class="av-torso-sheen" x="118" y="350" width="164" height="34" rx="26" />
+              <rect class="av-arm av-arm-left" x="56" y="352" width="32" height="62" rx="16" />
+              <rect class="av-arm av-arm-right" x="312" y="352" width="32" height="62" rx="16" />
+              <circle class="av-chest-ring" cx="200" cy="390" r="17" />
+              <path class="av-chest" d="M200 379 l6 11 -6 11 -6 -11 z" />
+            </g>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="avatar-hud">
+      <div class="avatar-title">
+        <h1>Nova</h1>
+        <span>avatar d'exemple — même runtime que Pocket</span>
+      </div>
+
+      <div class="row">
+        <span class="row-label">État</span>
+        <button class="chip is-active" type="button" data-state-btn="idle">Repos</button>
+        <button class="chip" type="button" data-state-btn="listening">Écoute</button>
+        <button class="chip" type="button" data-state-btn="thinking">Réflexion</button>
+        <button class="chip" type="button" data-state-btn="speaking">Parole</button>
+        <button class="chip" type="button" data-state-btn="error">Erreur</button>
+      </div>
+
+      <div class="row">
+        <span class="row-label">Humeur</span>
+        <button class="chip is-active" type="button" data-emotion-btn="neutral">Neutre</button>
+        <button class="chip" type="button" data-emotion-btn="happy">Joyeuse</button>
+        <button class="chip" type="button" data-emotion-btn="curious">Curieuse</button>
+        <button class="chip" type="button" data-emotion-btn="surprised">Surprise</button>
+        <button class="chip" type="button" data-emotion-btn="sad">Triste</button>
+        <button class="chip" type="button" data-emotion-btn="angry">Colère</button>
+        <button class="chip" type="button" data-emotion-btn="sleepy">Sommeil</button>
+      </div>
+
+      <div class="row">
+        <span class="row-label">Visème</span>
+        <button class="chip is-active" type="button" data-viseme-btn="rest">Repos</button>
+        <button class="chip" type="button" data-viseme-btn="a">A</button>
+        <button class="chip" type="button" data-viseme-btn="e">E</button>
+        <button class="chip" type="button" data-viseme-btn="i">I</button>
+        <button class="chip" type="button" data-viseme-btn="o">O</button>
+        <button class="chip" type="button" data-viseme-btn="u">U</button>
+        <button class="chip" type="button" data-viseme-btn="smile">Sourire</button>
+      </div>
+
+      <div class="row">
+        <span class="row-label">Démo</span>
+        <button id="btnSpeak" class="speak-btn" type="button">Dire bonjour</button>
+        <button id="btnGaze" class="chip" type="button">Regard aléatoire</button>
+      </div>
+
+      <p class="hint">
+        Ce fichier s'ouvre directement dans le navigateur. Le CSS et le SVG sont intégrés ici&nbsp;;
+        les animations sont dans <code>avatar-runtime.js</code>, réutilisable par tous les avatars qui
+        suivent le même contrat (<code>data-state</code>, <code>data-emotion</code>, <code>data-viseme</code>).
+        La voix utilise <code>speechSynthesis</code> du navigateur&nbsp;; aucun micro n'est nécessaire.
+      </p>
+    </div>
+  </div>
+
+  <script src="./avatar-runtime.js"></script>
+  <script>
+    (function () {
+      var stage = document.getElementById('novaStage');
+      var embed = /[?&]embed=1(?:&|$)/.test(window.location.search);
+      var avatar = new window.PocketAvatarRuntime(stage);
+
+      if (embed) document.body.classList.add('is-embed');
+
+      function markActive(selector, attr, value) {
+        var buttons = document.querySelectorAll(selector);
+        for (var i = 0; i < buttons.length; i += 1) {
+          buttons[i].classList.toggle('is-active', buttons[i].getAttribute(attr) === value);
+        }
+      }
+
+      function bind(selector, attr, fn) {
+        var buttons = document.querySelectorAll(selector);
+        for (var i = 0; i < buttons.length; i += 1) {
+          buttons[i].addEventListener('click', function () {
+            var value = this.getAttribute(attr);
+            fn(value);
+            markActive(selector, attr, value);
+          });
+        }
+      }
+
+      // La demo reste utilisable en ouverture directe du fichier.
+      if (!embed) {
+        bind('[data-state-btn]', 'data-state-btn', function (value) { avatar.setState(value); });
+        bind('[data-emotion-btn]', 'data-emotion-btn', function (value) { avatar.setEmotion(value, 0); });
+        bind('[data-viseme-btn]', 'data-viseme-btn', function (value) { avatar.setViseme(value, value === 'rest' ? 0 : 1); });
+
+        document.getElementById('btnGaze').addEventListener('click', function () {
+          avatar.look((Math.random() * 2 - 1), (Math.random() * 2 - 1));
+        });
+
+        var speakBtn = document.getElementById('btnSpeak');
+        speakBtn.addEventListener('click', function () {
+          if (speakBtn.disabled) return;
+          speakBtn.disabled = true;
+          markActive('[data-state-btn]', 'data-state-btn', 'speaking');
+          avatar.speak('Bonjour ! Je suis Nova, ton assistante curieuse et lumineuse.').then(function () {
+            speakBtn.disabled = false;
+            avatar.setState('idle');
+            markActive('[data-state-btn]', 'data-state-btn', 'idle');
+          });
+        });
+      }
+
+      // Mode integre : Pocket LAN pilote le meme runtime via postMessage.
+      window.addEventListener('message', function (event) {
+        var expected = embed ? window.parent : window;
+        if (event.source !== expected || event.origin !== window.location.origin) return;
+        var data = event.data;
+        if (!data || data.type !== 'pocket-avatar') return;
+        switch (data.action) {
+          case 'state': avatar.setState(data.value); break;
+          case 'emotion': avatar.setEmotion(data.value, data.duration == null ? 0 : data.duration); break;
+          case 'viseme': avatar.setViseme(data.value, data.amplitude); break;
+          case 'look': avatar.look(data.x, data.y); break;
+          case 'blink': avatar.blink(data.delay || 0); break;
+          case 'pause': avatar.setPaused(!!data.value); break;
+          case 'reset':
+            avatar.setState('idle');
+            avatar.setEmotion('neutral', 0);
+            avatar.setViseme('rest', 0);
+            break;
+        }
+      });
+
+      if (embed) {
+        window.parent.postMessage({ type: 'pocket-avatar', action: 'ready' }, window.location.origin);
+      }
+    })();
+  </script>
+</body>
+</html>
