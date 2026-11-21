@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="description" content="Pocket LAN : assistant IA local propulsé par LM Studio, avec avatar animé, synthèse vocale et conversations privées sur votre réseau local. Aucune API payante." />
+  <title>Pocket LAN — assistant IA local</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23070b10'/%3E%3Ccircle cx='32' cy='32' r='18' fill='none' stroke='%236ee7b7' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='6' fill='%235b8cff'/%3E%3C/svg%3E" />
+  <style>
+    :root {
+      --bg: #070b10;
+      --panel: #0e1520;
+      --panel-2: #121c29;
+      --line: rgba(150, 180, 210, 0.16);
+      --text: #e8eef4;
+      --muted: #9aa8b8;
+      --mint: #6ee7b7;
+      --blue: #5b8cff;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background:
+        radial-gradient(55% 40% at 15% 0%, rgba(91, 140, 255, 0.16), transparent 70%),
+        radial-gradient(45% 35% at 90% 10%, rgba(110, 231, 183, 0.10), transparent 70%);
+    }
+
+    a { color: var(--mint); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .wrap { width: min(1120px, calc(100% - 32px)); margin: 0 auto; }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(7, 11, 16, 0.82);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--line);
+    }
+
+    nav {
+      display: flex;
+      align-items: center;
+      gap: 22px;
+      min-height: 62px;
+      flex-wrap: wrap;
+    }
+
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 750; color: var(--text); }
+    .brand:hover { text-decoration: none; }
+    .brand-dot {
+      width: 11px; height: 11px; border-radius: 50%;
+      background: var(--mint); box-shadow: 0 0 18px var(--mint);
+    }
+    nav .links { display: flex; gap: 18px; flex-wrap: wrap; margin-left: auto; }
+    nav .links a { color: var(--muted); font-size: 0.94rem; }
+    nav .links a:hover { color: var(--text); text-decoration: none; }
+
+    .hero { text-align: center; padding: 52px 0 28px; }
+    .hero img {
+      display: block;
+      width: min(100%, 900px);
+      margin: 0 auto 34px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      box-shadow: 0 28px 90px rgba(0, 0, 0, 0.6);
+    }
+    h1 { font-size: clamp(2rem, 5vw, 3.4rem); line-height: 1.15; margin: 0 0 14px; letter-spacing: -0.02em; }
+    .lead { max-width: 720px; margin: 0 auto 20px; color: var(--muted); font-size: clamp(1rem, 2vw, 1.15rem); }
+    .promise { color: var(--mint); font-weight: 650; margin-bottom: 26px; }
+
+    .badges { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-bottom: 28px; }
+    .badge {
+      padding: 5px 12px; border-radius: 999px;
+      background: rgba(110, 231, 183, 0.09);
+      border: 1px solid rgba(110, 231, 183, 0.28);
+      color: #bff4dd; font-size: 0.82rem;
+    }
+
+    .cta { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 11px 20px; border-radius: 12px;
+      border: 1px solid var(--line); font-weight: 650;
+      transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+    }
+    .btn:hover { text-decoration: none; transform: translateY(-2px); }
+    .btn.primary {
+      color: #04130e; border-color: transparent;
+      background: linear-gradient(135deg, var(--mint), #8be9ff);
+    }
+    .btn.ghost { color: var(--text); background: var(--panel); }
+
+    section { padding: 58px 0; }
+    section + section { border-top: 1px solid var(--line); }
+    h2 { font-size: clamp(1.5rem, 3vw, 2rem); margin: 0 0 10px; letter-spacing: -0.01em; }
+    .sub { color: var(--muted); max-width: 760px; margin-bottom: 28px; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; }
+    .card {
+      background: linear-gradient(180deg, var(--panel-2), var(--panel));
+      border: 1px solid var(--line); border-radius: 16px; padding: 20px;
+    }
+    .card .icon { font-size: 1.5rem; }
+    .card h3 { margin: 8px 0 4px; font-size: 1.05rem; }
+    .card p { margin: 0; color: var(--muted); font-size: 0.94rem; }
+
+    .steps { display: grid; gap: 14px; counter-reset: step; }
+    .step {
+      position: relative; display: flex; gap: 16px;
+      background: var(--panel); border: 1px solid var(--line);
+      border-radius: 16px; padding: 18px 20px 18px 62px;
+    }
+    .step::before {
+      counter-increment: step; content: counter(step);
+      position: absolute; left: 18px; top: 18px;
+      width: 28px; height: 28px; border-radius: 9px;
+      display: grid; place-items: center; font-weight: 750; font-size: 0.9rem;
+      color: #04130e; background: var(--mint);
+    }
+    .step h3 { margin: 0 0 4px; font-size: 1.05rem; }
+    .step p { margin: 0 0 8px; color: var(--muted); font-size: 0.95rem; }
+    .step p:last-child { margin-bottom: 0; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    code { background: rgba(255, 255, 255, 0.06); padding: 2px 6px; border-radius: 6px; font-size: 0.9em; }
+    pre {
+      margin: 10px 0 0; padding: 12px 14px; overflow-x: auto;
+      background: #05080c; border: 1px solid var(--line); border-radius: 10px;
+      color: #d7e6f5; font-size: 0.9rem;
+    }
+    pre code { background: none; padding: 0; }
+
+    .note {
+      margin-top: 20px; padding: 16px 18px;
+      background: rgba(91, 140, 255, 0.08);
+      border: 1px solid rgba(91, 140, 255, 0.28);
+      border-left: 3px solid var(--blue);
+      border-radius: 12px; color: #cbd9ea; font-size: 0.94rem;
+    }
+    .note strong { color: var(--text); }
+
+    ul.clean { margin: 0; padding-left: 20px; color: var(--muted); }
+    ul.clean li + li { margin-top: 6px; }
+
+    .diagram {
+      margin: 0; padding: 22px; text-align: center;
+      background: #05080c; border: 1px solid var(--line); border-radius: 16px;
+      color: #cfe3f7; line-height: 1.9;
+    }
+    .diagram span { color: var(--mint); }
+
+    .video {
+      position: relative; aspect-ratio: 16 / 9;
+      border: 1px solid var(--line); border-radius: 18px; overflow: hidden;
+      background: #05080c; box-shadow: 0 22px 70px rgba(0, 0, 0, 0.5);
+    }
+    .video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+    .video-link { display: inline-block; margin-top: 16px; }
+
+    footer { border-top: 1px solid var(--line); padding: 28px 0 40px; text-align: center; color: var(--muted); font-size: 0.9rem; }
+
+    @media (max-width: 640px) {
+      nav .links { width: 100%; margin-left: 0; gap: 12px; }
+      .hero { padding-top: 32px; }
+      .step { padding: 16px 16px 16px 52px; }
+      .step::before { left: 14px; top: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <nav class="wrap" aria-label="Navigation principale">
+      <a class="brand" href="#top"><span class="brand-dot" aria-hidden="true"></span> Pocket LAN</a>
+      <div class="links">
+        <a href="#fonctionnalites">Fonctionnalités</a>
+        <a href="#installation">Installation</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#demo">Démonstration</a>
+        <a href="https://github.com/k-gou09/pocket-lan">GitHub ↗</a>
+      </div>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero wrap">
+      <img src="pre.png" alt="Interface de Pocket LAN : avatar animé à gauche, conversation à droite" width="900" />
+      <h1>Votre assistant IA,<br />chez vous.</h1>
+      <p class="lead">Pocket LAN fait tourner un assistant conversationnel directement sur votre machine grâce à LM Studio. Un avatar animé, une voix, et vos discussions qui ne quittent jamais votre réseau local.</p>
+      <p class="promise">Aucune API payante. Aucun abonnement. Vos données restent chez vous.</p>
+      <div class="badges">
+        <span class="badge">100 % local</span>
+        <span class="badge">Windows · PC · mobile</span>
+        <span class="badge">Installation en un clic</span>
+        <span class="badge">Open source · MIT</span>
+      </div>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/k-gou09/pocket-lan">Télécharger sur GitHub ↗</a>
+        <a class="btn ghost" href="#demo">▶️ Voir la démonstration</a>
+      </div>
+    </section>
+
+    <section id="fonctionnalites">
+      <div class="wrap">
+        <h2>✨ Tout ce qu'il faut, rien de superflu</h2>
+        <p class="sub">Installez, lancez, discutez. Pocket LAN s'occupe du reste.</p>
+        <div class="grid">
+          <div class="card"><div class="icon">💬</div><h3>Chat IA local</h3><p>Les réponses sont générées par LM Studio sur votre machine, sans service cloud.</p></div>
+          <div class="card"><div class="icon">🎭</div><h3>Deux avatars</h3><p>Pocket ou Nova, avec voix féminine, tous deux synchronisés avec la parole.</p></div>
+          <div class="card"><div class="icon">⚡</div><h3>Réponses en direct</h3><p>Le texte arrive mot à mot, comme dans un vrai échange.</p></div>
+          <div class="card"><div class="icon">🔊</div><h3>Voix intégrée</h3><p>La synthèse vocale du navigateur lit les réponses à haute voix.</p></div>
+          <div class="card"><div class="icon">💾</div><h3>Conversations gardées</h3><p>Votre historique est enregistré automatiquement dans une base SQLite locale.</p></div>
+          <div class="card"><div class="icon">🌐</div><h3>Réseau local</h3><p>Utilisez la même IA depuis votre PC, votre téléphone ou votre tablette.</p></div>
+          <div class="card"><div class="icon">🔄</div><h3>Mises à jour simples</h3><p>Une bannière vous prévient ; un clic et le jeton affiché dans la console suffisent.</p></div>
+          <div class="card"><div class="icon">🖱️</div><h3>Un clic pour démarrer</h3><p><code>install.bat</code> puis <code>run.bat</code> : pas de ligne de commande à connaître.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="installation">
+      <div class="wrap">
+        <h2>🚀 Installation en 4 étapes</h2>
+        <p class="sub">Comptez quelques minutes. Aucune configuration manuelle n'est requise.</p>
+        <div class="steps">
+          <div class="step">
+            <div><h3>Installer Python</h3>
+            <p>Téléchargez Python 3.11 ou plus récent sur <a href="https://www.python.org/downloads/">python.org</a>.</p>
+            <p>⚠️ Cochez <strong>« Add Python to PATH »</strong> pendant l'installation.</p></div>
+          </div>
+          <div class="step">
+            <div><h3>Installer LM Studio</h3>
+            <p>Téléchargez <a href="https://lmstudio.ai">LM Studio</a>, téléchargez un modèle compatible (Qwen, Llama, Mistral, Gemma, Phi…), chargez-le puis activez son serveur local.</p>
+            <p>Port attendu : <code>http://localhost:1234</code></p></div>
+          </div>
+          <div class="step">
+            <div><h3>Installer Pocket LAN</h3>
+            <p>Récupérez le dépôt puis double-cliquez sur <code>install.bat</code>. Le script crée l'environnement Python, installe les dépendances et vérifie que LM Studio répond.</p>
+            <pre><code>git clone https://github.com/k-gou09/pocket-lan.git
+cd pocket-lan
+install.bat</code></pre></div>
+          </div>
+          <div class="step">
+            <div><h3>Démarrer et discuter</h3>
+            <p>Double-cliquez sur <code>run.bat</code>, puis ouvrez <a href="http://localhost:8000">http://localhost:8000</a>. Choisissez votre avatar dans les réglages et lancez la conversation.</p></div>
+          </div>
+        </div>
+        <div class="note">
+          <strong>Jeton administrateur :</strong> au premier lancement, Pocket LAN génère un jeton aléatoire, l'affiche dans la console et le conserve dans <code>data/admin_token</code>. Rien à configurer. Il ne sert qu'à autoriser les mises à jour depuis l'interface ; supprimez le fichier pour en générer un nouveau.
+        </div>
+      </div>
+    </section>
+
+    <section id="vocal">
+      <div class="wrap">
+        <h2>🎤 À propos de la reconnaissance vocale</h2>
+        <p class="sub">Pocket LAN utilise l'API de dictée fournie par le navigateur. Ses limites viennent du navigateur, pas de l'application :</p>
+        <ul class="clean">
+          <li>une action utilisateur est nécessaire pour activer le micro ;</li>
+          <li>certains navigateurs désactivent l'API ;</li>
+          <li>une connexion Internet est généralement requise ;</li>
+          <li>le comportement varie selon Chrome, Edge et Firefox.</li>
+        </ul>
+        <div class="note">La <strong>synthèse vocale</strong> (lecture des réponses) continue de fonctionner normalement, même sans dictée.</div>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <div class="wrap">
+        <h2>⚙️ Architecture</h2>
+        <p class="sub">Une chaîne courte et locale : aucune génération n'est envoyée à un service externe.</p>
+        <pre class="diagram" aria-label="Schéma : Pocket LAN envoie les requêtes à FastAPI, puis à LM Studio, puis au modèle IA local">Pocket LAN (navigateur)
+        <span>▼</span>
+Serveur FastAPI
+        <span>▼</span>
+LM Studio
+        <span>▼</span>
+Modèle IA local</pre>
+        <div class="note" style="margin-top:24px">
+          <strong>Sur plusieurs appareils :</strong> une fois lancé, Pocket LAN est accessible depuis un PC Windows, un autre ordinateur du réseau, un téléphone ou une tablette. Tous partagent le même modèle LM Studio tout en gardant des conversations séparées. Si l'accès échoue, autorisez le port <code>8000</code> dans le pare-feu Windows.
+        </div>
+      </div>
+    </section>
+
+    <section id="demo">
+      <div class="wrap">
+        <h2>🎬 Démonstration</h2>
+        <p class="sub">Le lancement, l'avatar animé, une question, le streaming de la réponse et la synthèse vocale en quelques secondes.</p>
+        <div class="video">
+          <iframe src="https://www.youtube-nocookie.com/embed/j999x2k_apY" title="Démonstration de Pocket LAN" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+        </div>
+        <a class="btn ghost video-link" href="https://youtu.be/j999x2k_apY">▶️ Voir sur YouTube</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">Pocket LAN · Distribué sous licence <a href="https://github.com/k-gou09/pocket-lan/blob/main/LICENSE">MIT</a> · <a href="https://github.com/k-gou09/pocket-lan">Code source sur GitHub</a></div>
+  </footer>
+</body>
+</html>
