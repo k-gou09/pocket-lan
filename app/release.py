@@ -9,7 +9,9 @@ La detection est desactivee si aucun depot GitHub n'est configure.
 """
 
 import asyncio
+import os
 import re
+import subprocess
 import time
 from typing import Any
 
@@ -39,6 +41,46 @@ def _newer(latest: str, current: str) -> bool:
     left += (0,) * (width - len(left))
     right += (0,) * (width - len(right))
     return left > right
+
+
+def _git_latest_tag() -> tuple[str, str]:
+    """Lit le dernier tag distant via git, sans token GitHub.
+
+    Les dépôts privés renvoient 404 sur l'API anonyme. Comme l'application
+    dispose déjà des identifiants git (gestionnaire d'identifiants Windows,
+    SSH, etc.), les tags locaux sont une source de détection fiable.
+    """
+    env = dict(os.environ)
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", "--tags", "origin"],
+            cwd=str(config.BASE_DIR),
+            capture_output=True,
+            text=True,
+            timeout=20,
+            env=env,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "", ""
+    if result.returncode != 0:
+        return "", ""
+
+    tags = []
+    for line in (result.stdout or "").splitlines():
+        ref = line.split("\t", 1)[-1].strip()
+        if not ref.startswith("refs/tags/"):
+            continue
+        tag = ref[len("refs/tags/") :]
+        if tag.endswith("^{}") or not re.fullmatch(r"v?\d+(?:\.\d+)*", tag):
+            continue
+        tags.append(tag)
+    if not tags:
+        return "", ""
+
+    latest = max(tags, key=_parse_version)
+    url = "https://github.com/" + config.GITHUB_REPO + "/releases/tag/" + latest
+    return latest, url
 
 
 def initial_state() -> dict[str, Any]:
@@ -96,30 +138,38 @@ async def check_once(client: httpx.AsyncClient, state: dict[str, Any]) -> dict[s
         "Accept": "application/vnd.github+json",
         "User-Agent": "pocket-lan/" + __version__,
     }
+    if config.GITHUB_TOKEN:
+        headers["Authorization"] = "Bearer " + config.GITHUB_TOKEN
+
+    error = ""
+    latest = ""
+    html_url = ""
     try:
         response = await client.get(url, headers=headers, timeout=15.0)
         response.raise_for_status()
         payload = response.json()
         latest = str(payload.get("tag_name") or payload.get("name") or "").strip()
         html_url = str(payload.get("html_url") or "").strip()
-        state.update(
-            {
-                "enabled": True,
-                "repo": config.GITHUB_REPO,
-                "current": __version__,
-                "latest": latest,
-                "update_available": _newer(latest, __version__) if latest else False,
-                "url": html_url,
-                "checked_at": int(time.time()),
-                "error": "",
-            }
-        )
     except Exception as err:  # noqa: BLE001 - silencieux : on conserve l'erreur sans bruit
-        state["enabled"] = True
-        state["repo"] = config.GITHUB_REPO
-        state["current"] = __version__
-        state["checked_at"] = int(time.time())
-        state["error"] = str(err)
+        error = str(err)
+        # Depot prive : l'API anonyme renvoie 404. Les identifiants git deja
+        # configures permettent de lire les tags sans jeton supplementaire.
+        latest, html_url = await asyncio.to_thread(_git_latest_tag)
+        if latest:
+            error = ""
+
+    state.update(
+        {
+            "enabled": True,
+            "repo": config.GITHUB_REPO,
+            "current": __version__,
+            "latest": latest,
+            "update_available": _newer(latest, __version__) if latest else False,
+            "url": html_url,
+            "checked_at": int(time.time()),
+            "error": error,
+        }
+    )
     state["changed"] = (prev_available != bool(state.get("update_available"))) or (prev_latest != str(state.get("latest") or ""))
     return state
 

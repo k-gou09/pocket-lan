@@ -77,6 +77,14 @@ http://localhost:8000
 
 💡 **Jeton administrateur** : au premier lancement, Pocket LAN génère automatiquement un jeton et l'affiche dans la console (il est conservé dans `data/admin_token`). Aucune configuration manuelle n'est nécessaire. Il sert uniquement à autoriser les mises à jour depuis l'interface. Pour en générer un nouveau, supprimez `data/admin_token` puis redémarrez.
 
+## 🔄 Mises à jour
+
+Pocket LAN vérifie silencieusement l'existence d'une nouvelle release au démarrage, puis toutes les 6 heures. Quand une version plus récente est disponible, une bannière apparaît dans l'interface.
+
+Cliquez sur « Mettre à jour », saisissez le jeton administrateur affiché dans la console, et le serveur récupère la release, installe les dépendances puis redémarre automatiquement.
+
+Si le dépôt est privé, la détection utilise les tags Git déjà configurés sur votre machine. La variable `POCKET_GITHUB_TOKEN` permet aussi d'autoriser l'API GitHub.
+
 ## 🎤 Pourquoi la reconnaissance vocale n'est pas toujours disponible ?
 
 Pocket LAN utilise l'API de reconnaissance vocale fournie par le navigateur.

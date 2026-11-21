@@ -37,6 +37,10 @@ CHARS_PER_TOKEN = 4
 # POCKET_GITHUB_REPO="" desactive la detection (aucune requete reseau).
 GITHUB_REPO = os.environ.get("POCKET_GITHUB_REPO", "k-gou09/pocket-lan").strip()
 
+# Jeton optionnel pour interroger l'API GitHub d'un depot prive.
+# Sans jeton, la detection retombe sur les tags git du depot local.
+GITHUB_TOKEN = os.environ.get("POCKET_GITHUB_TOKEN", "").strip()
+
 # Jeton admin : variable POCKET_ADMIN_TOKEN si fournie, sinon generation
 # automatique au premier lancement et stockage dans data/admin_token.
 ADMIN_TOKEN_FILE = DATA_DIR / "admin_token"
