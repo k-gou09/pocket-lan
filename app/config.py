@@ -34,8 +34,8 @@ MAX_MODEL_SIZE_GB = float(os.environ.get("POCKET_MAX_MODEL_GO", "8"))
 CHARS_PER_TOKEN = 4
 
 # Depot GitHub "owner/repo" pour la detection silencieuse des releases.
-# Vide : la detection est desactivee (aucune requete reseau).
-GITHUB_REPO = os.environ.get("POCKET_GITHUB_REPO", "").strip()
+# POCKET_GITHUB_REPO="" desactive la detection (aucune requete reseau).
+GITHUB_REPO = os.environ.get("POCKET_GITHUB_REPO", "k-gou09/pocket-lan").strip()
 
 # Jeton admin : variable POCKET_ADMIN_TOKEN si fournie, sinon generation
 # automatique au premier lancement et stockage dans data/admin_token.
