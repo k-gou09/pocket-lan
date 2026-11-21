@@ -122,13 +122,15 @@ Le premier accès depuis un autre appareil peut nécessiter d'autoriser le port 
 
 ## 🎬 Démonstration
 
-Le lancement de l'application, l'avatar animé, l'envoi d'une question, le streaming de la réponse et la synthèse vocale en 15 secondes :
+Le lancement de l'application, l'avatar animé, l'envoi d'une question, le streaming de la réponse et la synthèse vocale en quelques secondes :
 
 <p align="center">
-  <video src="pocket.mp4" controls poster="pre.png" width="800"></video>
+  <a href="https://youtu.be/j999x2k_apY">
+    <img src="https://img.youtube.com/vi/j999x2k_apY/maxresdefault.jpg" alt="Démonstration de Pocket LAN sur YouTube" width="800">
+  </a>
 </p>
 
-[Voir la vidéo directement](pocket.mp4)
+▶️ [Voir la démonstration sur YouTube](https://youtu.be/j999x2k_apY)
 
 ## 📄 Licence
 
