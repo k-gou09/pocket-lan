@@ -5,9 +5,11 @@ Les valeurs peuvent etre ecrasees par des variables d'environnement :
   LMSTUDIO_URL      URL du serveur local de LM Studio (http://127.0.0.1:1234)
   LMS_CLI           chemin du CLI lms, utilise pour charger un modele
   POCKET_MAX_MODEL_GO taille maximale acceptee pour un modele, en Go
+  POCKET_ADMIN_TOKEN jeton admin (genere automatiquement si absent)
 """
 
 import os
+import secrets
 import shutil
 from pathlib import Path
 
@@ -35,8 +37,43 @@ CHARS_PER_TOKEN = 4
 # Vide : la detection est desactivee (aucune requete reseau).
 GITHUB_REPO = os.environ.get("POCKET_GITHUB_REPO", "").strip()
 
-# Jeton admin : requis pour les actions sensibles (mise à jour). Vide = désactivé.
-ADMIN_TOKEN = os.environ.get("POCKET_ADMIN_TOKEN", "").strip()
+# Jeton admin : variable POCKET_ADMIN_TOKEN si fournie, sinon generation
+# automatique au premier lancement et stockage dans data/admin_token.
+ADMIN_TOKEN_FILE = DATA_DIR / "admin_token"
+
+
+def _load_admin_token() -> tuple[str, str]:
+    override = os.environ.get("POCKET_ADMIN_TOKEN", "").strip()
+    if override:
+        return override, "variable POCKET_ADMIN_TOKEN"
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        if ADMIN_TOKEN_FILE.exists():
+            saved = ADMIN_TOKEN_FILE.read_text(encoding="utf-8").strip()
+            if saved:
+                return saved, str(ADMIN_TOKEN_FILE)
+        token = secrets.token_urlsafe(24)
+        ADMIN_TOKEN_FILE.write_text(token + "\n", encoding="utf-8")
+        try:
+            ADMIN_TOKEN_FILE.chmod(0o600)
+        except OSError:
+            pass
+        return token, str(ADMIN_TOKEN_FILE)
+    except OSError:
+        return "", "indisponible"
+
+
+ADMIN_TOKEN, ADMIN_TOKEN_SOURCE = _load_admin_token()
+if ADMIN_TOKEN:
+    print("")
+    print("[Pocket LAN] Jeton administrateur : " + ADMIN_TOKEN)
+    print("[Pocket LAN] Source : " + ADMIN_TOKEN_SOURCE)
+    print("[Pocket LAN] A saisir dans l'interface si une mise a jour est proposee.")
+    print("")
+else:
+    print("")
+    print("[Pocket LAN] Jeton administrateur indisponible : ecriture de data/ impossible.")
+    print("")
 
 # Consigne par defaut, utilisee pour creer le persona initial si absent.
 DEFAULT_SYSTEM_PROMPT = (

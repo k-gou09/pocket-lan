@@ -321,7 +321,7 @@ def is_admin(sid: str) -> bool:
 
 def require_admin(sid: str) -> str:
     if not config.ADMIN_TOKEN:
-        return "Administration désactivée (POCKET_ADMIN_TOKEN non configuré)."
+        return "Administration désactivée (jeton admin indisponible sur ce serveur)."
     if not is_admin(sid):
         return "Accès administrateur requis."
     return ""
@@ -350,7 +350,7 @@ async def admin_login(request: Request):
     body = await request.json()
     token = str(body.get("token") or "").strip()
     if not config.ADMIN_TOKEN:
-        return json_ok({"error": "Administration désactivée (POCKET_ADMIN_TOKEN non configuré)."}, sid)
+        return json_ok({"error": "Administration désactivée (jeton admin indisponible sur ce serveur)."}, sid)
     if token != config.ADMIN_TOKEN:
         return json_ok({"error": "Jeton administrateur invalide."}, sid)
     app.state.admin_sessions.add(sid)

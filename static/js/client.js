@@ -562,10 +562,10 @@ function renderUpdateBanner() {
 async function ensureAdminAccess() {
   if (isAdmin) return true;
   if (!adminEnabled) {
-    showToast("Mise à jour admin indisponible : configure POCKET_ADMIN_TOKEN sur le serveur.");
+    showToast("Mise à jour admin indisponible : jeton non disponible sur le serveur.");
     return false;
   }
-  const token = window.prompt('Jeton administrateur (POCKET_ADMIN_TOKEN) :');
+  const token = window.prompt('Jeton administrateur (affiché dans la console au démarrage) :');
   if (!token) return false;
   try {
     const res = await fetch('/api/admin/login', {

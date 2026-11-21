@@ -75,6 +75,8 @@ Puis ouvrez :
 
 http://localhost:8000
 
+💡 **Jeton administrateur** : au premier lancement, Pocket LAN génère automatiquement un jeton et l'affiche dans la console (il est conservé dans `data/admin_token`). Aucune configuration manuelle n'est nécessaire. Il sert uniquement à autoriser les mises à jour depuis l'interface. Pour en générer un nouveau, supprimez `data/admin_token` puis redémarrez.
+
 ## 🎤 Pourquoi la reconnaissance vocale n'est pas toujours disponible ?
 
 Pocket LAN utilise l'API de reconnaissance vocale fournie par le navigateur.
