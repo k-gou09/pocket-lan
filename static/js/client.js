@@ -32,6 +32,12 @@ const els = {
   empty: $('empty'),
   input: $('input'),
   btnSend: $('btnSend'),
+  btnAttach: $('btnAttach'),
+  attachMenu: $('attachMenu'),
+  fileInput: $('fileInput'),
+  imageInput: $('imageInput'),
+  cameraInput: $('cameraInput'),
+  attachPreview: $('attachPreview'),
   iSend: document.querySelector('.i-send'),
   iStop: document.querySelector('.i-stop'),
   avatarPane: $('avatarPane'),
@@ -53,18 +59,16 @@ const els = {
   btnUpdateApply: $('btnUpdateApply'),
   btnUpdateDetails: $('btnUpdateDetails'),
   settingModel: $('settingModel'),
-  settingContextLength: $('settingContextLength'),
+  settingBackend: $('settingBackend'),
+  settingOllamaUrl: $('settingOllamaUrl'),
+  rowOllamaUrl: $('rowOllamaUrl'),
   settingBudget: $('settingBudget'),
-  settingMaxTokens: $('settingMaxTokens'),
-  settingTemperature: $('settingTemperature'),
-  settingReasoning: $('settingReasoning'),
   settingTts: $('settingTts'),
   settingMic: $('settingMic'),
   settingAutoSend: $('settingAutoSend'),
   settingAvatar: $('settingAvatar'),
   settingVoice: $('settingVoice'),
   settingVoiceLabel: $('settingVoiceLabel'),
-  settingPersona: $('settingPersona'),
   btnApplyModel: $('btnApplyModel'),
   btnCloseDrawer: $('btnCloseDrawer'),
 };
@@ -86,7 +90,6 @@ const dictation = new Dictation({ lang: 'fr-FR', continuous: true, interimResult
 
 let settings = {};
 let globalSettings = {};
-let personasList = [];
 let session = null;
 let conversations = [];
 let current = null;
@@ -105,11 +108,17 @@ let lastSpokenId = '';
 let streamSpeakId = '';
 let streamSpokenDone = false;
 let updateState = null;
-let isAdmin = false;
-let adminEnabled = false;
 let gateWaiting = 0;
 let stickToBottom = true;
 let typingEl = null;
+// Message utilisateur ajoute localement des l'envoi, en attendant l'echo du serveur.
+// Permet d'afficher le bubble "..." SOUS le message et non au-dessus.
+let pendingLocalUserMsg = null;
+
+// Pieces jointes en attente d'envoi (deja uploadees sur le serveur).
+let pendingAttachments = [];
+let lastSentAttachments = [];
+const MAX_PENDING_FILES = 8;
 
 // Etat de l'avatar : trois sources, une seule est visible a la fois.
 // La voix passe avant la dictee, la dictee passe avant l'etat du serveur :
@@ -294,7 +303,7 @@ function appendErrorBubble(text) {
   retry.addEventListener('click', () => {
     if (busy) return;
     wrap.remove();
-    sendText(lastSentText);
+    sendText(lastSentText, lastSentAttachments);
   });
   bubble.appendChild(retry);
   wrap.appendChild(bubble);
@@ -314,6 +323,101 @@ function setView(mode) {
   localStorage.setItem(VIEW_KEY, mode);
 }
 
+// ---------- pieces jointes ----------
+
+function voiceKey() {
+  if (avatar.id === 'nova') return 'voiceNova';
+  if (avatar.id === 'iris') return 'voiceIris';
+  return 'voice';
+}
+
+function attachmentIcon(kind) {
+  return kind === 'image' ? '🖼️' : kind === 'pdf' ? '📄' : '📃';
+}
+
+function makeAttachmentItem(attachment) {
+  const href = '/api/upload/' + encodeURIComponent(attachment.id);
+  const link = document.createElement('a');
+  link.className = 'attach-item';
+  link.href = href;
+  link.target = '_blank';
+  link.rel = 'noopener';
+  link.title = attachment.name || 'Fichier joint';
+  if (attachment.kind === 'image') {
+    const thumb = document.createElement('img');
+    thumb.className = 'attach-thumb';
+    thumb.src = href;
+    thumb.alt = '';
+    link.appendChild(thumb);
+  } else {
+    const icon = document.createElement('span');
+    icon.textContent = attachmentIcon(attachment.kind);
+    link.appendChild(icon);
+  }
+  const name = document.createElement('span');
+  name.textContent = attachment.name || 'Fichier';
+  link.appendChild(name);
+  return link;
+}
+
+function renderPendingAttachments() {
+  const box = els.attachPreview;
+  box.innerHTML = '';
+  box.hidden = pendingAttachments.length === 0;
+  pendingAttachments.forEach((attachment, index) => {
+    const chip = document.createElement('div');
+    chip.className = 'attach-chip';
+    const label = document.createElement('span');
+    label.textContent = attachmentIcon(attachment.kind) + ' ' + attachment.name;
+    chip.appendChild(label);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = '×';
+    remove.setAttribute('aria-label', 'Retirer ' + attachment.name);
+    remove.addEventListener('click', () => {
+      pendingAttachments.splice(index, 1);
+      renderPendingAttachments();
+    });
+    chip.appendChild(remove);
+    box.appendChild(chip);
+  });
+}
+
+function openAttachMenu(open) {
+  if (!els.attachMenu) return;
+  els.attachMenu.hidden = !open;
+  els.btnAttach.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+async function uploadFiles(files) {
+  const list = Array.from(files || []);
+  for (const file of list) {
+    if (pendingAttachments.length >= MAX_PENDING_FILES) {
+      showToast('Maximum ' + MAX_PENDING_FILES + ' fichiers par message.');
+      break;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Fichier trop gros (5 Mo max) : ' + file.name);
+      continue;
+    }
+    const form = new FormData();
+    form.append('file', file);
+    try {
+      const response = await fetch('/api/upload', { method: 'POST', body: form });
+      const data = await response.json();
+      if (data.error) {
+        showToast(data.error);
+        continue;
+      }
+      pendingAttachments.push(data.attachment);
+      if (data.attachment.note) showToast(data.attachment.note);
+    } catch {
+      showToast('Envoi du fichier impossible : ' + file.name);
+    }
+  }
+  renderPendingAttachments();
+}
+
 // ---------- rendu du chat ----------
 
 function appendUserMessage(message) {
@@ -324,6 +428,13 @@ function appendUserMessage(message) {
   bubble.className = 'bubble';
   bubble.appendChild(document.createTextNode(message.content));
   wrap.appendChild(bubble);
+  const attachments = message.attachments || [];
+  if (attachments.length) {
+    const list = document.createElement('div');
+    list.className = 'attach-list';
+    for (const attachment of attachments) list.appendChild(makeAttachmentItem(attachment));
+    wrap.appendChild(list);
+  }
   addMsgActions(wrap, bubble, message.created_at);
   els.messages.appendChild(wrap);
 }
@@ -517,8 +628,6 @@ function sendEvent(type, payload = {}) {
 function applyUpdatePayload(data) {
   if (!data) return;
   if (Object.prototype.hasOwnProperty.call(data, 'update')) updateState = data.update || null;
-  if (Object.prototype.hasOwnProperty.call(data, 'is_admin')) isAdmin = !!data.is_admin;
-  if (Object.prototype.hasOwnProperty.call(data, 'admin_enabled')) adminEnabled = !!data.admin_enabled;
   renderUpdateBanner();
 }
 
@@ -555,42 +664,13 @@ function renderUpdateBanner() {
   const canShowApply = available && !applying;
   els.btnUpdateApply.hidden = !canShowApply;
   els.btnUpdateApply.disabled = !!applying;
-  els.btnUpdateApply.textContent = isAdmin ? 'Mettre à jour' : 'Mettre à jour (admin)';
+  els.btnUpdateApply.textContent = 'Mettre à jour';
 
   const hasUrl = !!u.url;
   els.btnUpdateDetails.hidden = !hasUrl;
 }
 
-async function ensureAdminAccess() {
-  if (isAdmin) return true;
-  if (!adminEnabled) {
-    showToast("Mise à jour admin indisponible : jeton non disponible sur le serveur.");
-    return false;
-  }
-  const token = window.prompt('Jeton administrateur (affiché dans la console au démarrage) :');
-  if (!token) return false;
-  try {
-    const res = await fetch('/api/admin/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
-    });
-    const data = await res.json();
-    if (data.error) {
-      showToast(data.error);
-      return false;
-    }
-    applyUpdatePayload(data);
-    return !!data.is_admin;
-  } catch (err) {
-    showToast('Connexion admin impossible : ' + err);
-    return false;
-  }
-}
-
 async function triggerUpdateApply() {
-  const ok = await ensureAdminAccess();
-  if (!ok) return;
   els.btnUpdateApply.disabled = true;
   try {
     const res = await fetch('/api/update/apply', {
@@ -664,7 +744,6 @@ function handleEvent(data) {
       session = data.data.session;
       settings = data.data.settings;
       globalSettings = data.data.settings;
-      personasList = data.data.personas || personasList;
       conversations = data.data.conversations || [];
       renderSettings();
       renderParticipants(data.data.participants || []);
@@ -675,13 +754,36 @@ function handleEvent(data) {
 
     case 'message': {
       const conv = data.conversation;
-      if (!conversations.some((c) => c.id === conv.id)) conversations.unshift(conv);
+      const newConv = !conversations.some((c) => c.id === conv.id);
+      if (newConv) conversations.unshift(conv);
       if (!current || current.id !== conv.id) current = { ...conv, messages: [] };
       els.convTitle.textContent = conv.title || 'Nouvelle conversation';
       els.empty.hidden = true;
-      appendUserMessage(data.message);
+      const msg = data.message;
+      const pending = pendingLocalUserMsg;
+      pendingLocalUserMsg = null;
+      // On n'absorbe l'echo que s'il vient bien de notre envoi : meme contenu,
+      // role user, et meme conversation (ou nouvelle conversation cote client).
+      const ours = msg.role === 'user' && pending && pending.content === msg.content
+        && (pending.convId ? pending.convId === conv.id : newConv);
+      const localEl = ours
+        ? els.messages.querySelector('[data-message-id="' + pending.localId + '"]')
+        : null;
+
       // Le message compte dans l'historique memoire des maintenant.
-      current.messages.push(data.message);
+      current.messages.push(msg);
+      if (ours && localEl && localEl.querySelector('.bubble').textContent === msg.content) {
+        localEl.dataset.messageId = msg.id;
+        const time = localEl.querySelector('.msg-time');
+        if (time) time.textContent = formatWhen(msg.created_at);
+      } else if (ours) {
+        // DOM reconstruit entre temps : on re-rend depuis l'historique,
+        // pas dans la conversation affichee par erreur.
+        renderMessages();
+        if (busy) showTyping();
+      } else {
+        appendUserMessage(msg);
+      }
       renderConversationList();
       scrollToBottom();
       break;
@@ -797,6 +899,7 @@ function handleEvent(data) {
 
     case 'error': {
       hideTyping();
+      pendingLocalUserMsg = null;
       setBusy(false);
       setSource('server', 'idle');
       applyEmotion('sad');
@@ -846,11 +949,6 @@ function handleEvent(data) {
       applyUpdatePayload(data);
       break;
 
-    case 'admin':
-      applyUpdatePayload(data);
-      if (data.is_admin) showToast('Mode administrateur activé.');
-      break;
-
     case 'pong':
       showGate(data.gate);
       break;
@@ -864,15 +962,17 @@ async function checkHealth() {
   try {
     const response = await fetch('/api/health');
     const data = await response.json();
+    const name = data.label || 'Moteur local';
     if (data.ok) {
-      const label = data.loaded && data.loaded.length
-        ? 'LM Studio joignable · modele charge : ' + data.loaded.join(', ')
-        : 'LM Studio joignable, mais aucun modele charge';
-      setDot(data.loaded && data.loaded.length ? 'ok' : 'busy', label);
-      if (!data.loaded || !data.loaded.length) bus.emit('notice', 'Aucun modele charge dans LM Studio : choisis un modele dans les reglages.');
+      const hasModels = data.loaded && data.loaded.length;
+      const label = hasModels
+        ? name + ' joignable · modèles : ' + data.loaded.join(', ')
+        : name + ' joignable, mais aucun modèle disponible';
+      setDot(hasModels ? 'ok' : 'busy', label);
+      if (!hasModels) bus.emit('notice', 'Aucun modèle disponible dans ' + name + ' : choisis un modèle dans les réglages.');
     } else {
-      setDot('err', data.error || 'LM Studio injoignable');
-      bus.emit('notice', data.error || 'LM Studio injoignable : le serveur local doit etre allume sur le port 1234.');
+      setDot('err', data.error || name + ' injoignable');
+      bus.emit('notice', data.error || name + ' injoignable : le serveur local doit être allumé.');
     }
     showGate(data.gate);
   } catch {
@@ -908,10 +1008,11 @@ function renderParticipants(participants) {
 
 function renderSettings() {
   els.settingBudget.value = settings.contextBudget || globalSettings.contextBudget || 0;
-  els.settingMaxTokens.value = settings.maxTokens;
-  els.settingTemperature.value = settings.temperature;
-  fillPersonas(personasList);
-  if (!els.settingContextLength.value) els.settingContextLength.value = 4096;
+
+  const backend = globalSettings.backend || 'lms';
+  if (els.settingBackend) els.settingBackend.value = backend;
+  if (els.settingOllamaUrl) els.settingOllamaUrl.value = globalSettings.ollamaUrl || '';
+  if (els.rowOllamaUrl) els.rowOllamaUrl.hidden = backend !== 'ollama';
 
   els.settingTts.setAttribute('aria-checked', settings.tts ? 'true' : 'false');
   els.settingTts.textContent = settings.tts ? 'activée' : 'désactivée';
@@ -919,8 +1020,6 @@ function renderSettings() {
   els.settingMic.textContent = settings.mic ? 'activé' : 'désactivé';
   els.settingAutoSend.setAttribute('aria-checked', settings.autoSend ? 'true' : 'false');
   els.settingAutoSend.textContent = settings.autoSend ? 'activé' : 'désactivé';
-  els.settingReasoning.setAttribute('aria-checked', settings.showReasoning ? 'true' : 'false');
-  els.settingReasoning.textContent = settings.showReasoning ? 'activé' : 'désactivé';
 
   els.btnDictation.disabled = !settings.mic;
   els.btnMic.disabled = !settings.mic;
@@ -929,19 +1028,20 @@ function renderSettings() {
   // voix feminine si le navigateur en expose une, sinon sur la voix francaise
   // par defaut ; l'utilisateur peut toujours la remplacer dans la liste.
   avatar.use(settings.avatar || 'pocket');
-  const nova = avatar.id === 'nova';
-  speaker.preferFeminine = nova;
-  speaker.preferredVoice = (nova ? settings.voiceNova : settings.voice) || '';
+  speaker.preferFeminine = avatar.id === 'nova' || avatar.id === 'iris';
+  speaker.preferredVoice = settings[voiceKey()] || '';
   speaker.refreshVoices();
   if (els.settingAvatar) els.settingAvatar.value = avatar.id;
   if (els.settingVoiceLabel) {
-    els.settingVoiceLabel.textContent = nova ? 'Voix de Nova (féminine)' : 'Voix (navigateur)';
+    els.settingVoiceLabel.textContent = avatar.id === 'nova'
+      ? 'Voix de Nova (féminine)'
+      : avatar.id === 'iris' ? "Voix d'Iris" : 'Voix (navigateur)';
   }
   fillVoices();
 }
 
 function fillVoices() {
-  const key = avatar.id === 'nova' ? 'voiceNova' : 'voice';
+  const key = voiceKey();
   els.settingVoice.innerHTML = '';
   const option = document.createElement('option');
   option.value = '';
@@ -960,33 +1060,44 @@ function fillVoices() {
 }
 
 
-function fillPersonas(list) {
-  if (!els.settingPersona) return;
-  const active = globalSettings.persona || (settings && settings.persona) || 'default';
-  els.settingPersona.innerHTML = '';
-  for (const persona of (list || [])) {
-    const choice = document.createElement('option');
-    choice.value = persona.id;
-    choice.textContent = persona.name || persona.id;
-    if (persona.id === active) choice.selected = true;
-    els.settingPersona.appendChild(choice);
-  }
-  if (!els.settingPersona.options.length) {
-    const choice = document.createElement('option');
-    choice.value = active;
-    choice.textContent = active;
-    choice.selected = true;
-    els.settingPersona.appendChild(choice);
-  }
-}
-
 function fillModels(models) {
   els.settingModel.innerHTML = '';
+  // Les modeles d'embedding ne savent pas discuter : on les masque quand un
+  // modele de chat est disponible (meme filtre que le serveur).
+  const usable = (models || []).filter(
+    (model) => model.type !== 'embeddings' && !/embed|bge|nomic-embed/i.test(model.id || '')
+  );
+  if (usable.length) models = usable;
+  const wanted = globalSettings.model || settings.model || '';
+  let selected = false;
   for (const model of models) {
     const choice = document.createElement('option');
     choice.value = model.id;
-    choice.textContent = model.id + ' · ' + model.state + ' · ' + (model.quantization || '?');
-    if (model.id === (globalSettings.model || settings.model)) choice.selected = true;
+    choice.textContent = model.id
+      + (model.state ? ' · ' + model.state : '')
+      + (model.quantization ? ' · ' + model.quantization : '');
+    if (model.id === wanted) {
+      choice.selected = true;
+      selected = true;
+    }
+    els.settingModel.appendChild(choice);
+  }
+  // Après une bascule LM Studio <-> Ollama, l'ancien identifiant n'existe plus
+  // dans la liste : on adopte le premier modèle disponible pour éviter un 404.
+  if (!selected && models.length) {
+    const first = models[0].id;
+    els.settingModel.value = first;
+    globalSettings.model = first;
+    settings.model = first;
+    if (wanted !== first) {
+      sendGlobalPatch({ model: first });
+      bus.emit('notice', 'Modèle adapté au backend : ' + first);
+    }
+  } else if (!models.length) {
+    const choice = document.createElement('option');
+    choice.value = '';
+    choice.textContent = 'aucun modèle disponible';
+    choice.selected = true;
     els.settingModel.appendChild(choice);
   }
 }
@@ -1005,7 +1116,7 @@ function sendSettingsPatch(patch) {
 }
 
 function sendGlobalPatch(patch) {
-  fetch('/api/global', {
+  return fetch('/api/global', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
@@ -1028,9 +1139,12 @@ function setBusy(value) {
   refreshRegenerateButtons();
 }
 
-function sendText(text) {
+function sendText(text, attachmentIds = null) {
   const clean = String(text || '').trim();
-  if (!clean) return;
+  const ids = attachmentIds === null
+    ? pendingAttachments.map((attachment) => attachment.id)
+    : (attachmentIds || []).slice();
+  if (!clean && !ids.length) return;
   if (busy) {
     showToast("Réponse en cours : termine la génération avant d'envoyer un autre message.");
     return;
@@ -1041,7 +1155,21 @@ function sendText(text) {
   }
   const convId = current ? current.id : '';
   lastSentText = clean;
-  sendEvent('chat', { conv_id: convId, text: clean });
+  lastSentAttachments = ids.slice();
+  // Ajoute le message utilisateur au DOM AVANT le bubble "..." pour que
+  // l'animation de reflexion apparaisse en dessous, et non au-dessus.
+  const localId = 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+  // formatWhen() attend des secondes, comme time.time() cote serveur.
+  const localAttachments = attachmentIds === null ? pendingAttachments.slice() : [];
+  const localMsg = {
+    id: localId, role: 'user', content: clean,
+    created_at: Date.now() / 1000, attachments: localAttachments,
+  };
+  pendingLocalUserMsg = { localId, content: clean, convId };
+  appendUserMessage(localMsg);
+  sendEvent('chat', { conv_id: convId, text: clean, attachments: ids });
+  pendingAttachments = [];
+  renderPendingAttachments();
   els.input.value = '';
   autosize();
   setBusy(true);
@@ -1148,6 +1276,34 @@ function bind() {
     sendText(els.input.value);
   });
 
+  if (els.btnAttach && els.attachMenu) {
+    els.btnAttach.addEventListener('click', (event) => {
+      event.stopPropagation();
+      openAttachMenu(els.attachMenu.hidden);
+    });
+    els.attachMenu.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-attach]');
+      if (!button) return;
+      openAttachMenu(false);
+      const kind = button.dataset.attach;
+      const input = kind === 'file' ? els.fileInput : kind === 'camera' ? els.cameraInput : els.imageInput;
+      input.value = '';
+      input.click();
+    });
+    document.addEventListener('click', (event) => {
+      if (!els.attachMenu.hidden && !event.target.closest('.attach-wrap')) openAttachMenu(false);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') openAttachMenu(false);
+    });
+    for (const input of [els.fileInput, els.imageInput, els.cameraInput]) {
+      input.addEventListener('change', () => {
+        uploadFiles(input.files);
+        input.value = '';
+      });
+    }
+  }
+
   els.input.addEventListener('input', () => {
     autosize();
     sendEvent('typing', { on: els.input.value.trim().length > 0 });
@@ -1227,22 +1383,39 @@ function bind() {
   });
 
   els.settingAutoSend.addEventListener('click', () => sendSettingsPatch({ autoSend: !settings.autoSend }));
-  els.settingReasoning.addEventListener('click', () => sendSettingsPatch({ showReasoning: !settings.showReasoning }));
 
   if (els.settingAvatar) {
     els.settingAvatar.addEventListener('change', () => sendSettingsPatch({ avatar: els.settingAvatar.value }));
   }
 
   els.settingVoice.addEventListener('change', () => {
-    const key = avatar.id === 'nova' ? 'voiceNova' : 'voice';
-    sendSettingsPatch({ [key]: els.settingVoice.value });
+    sendSettingsPatch({ [voiceKey()]: els.settingVoice.value });
   });
 
-  els.settingBudget.addEventListener('change', () => sendSettingsPatch({ contextBudget: Number(els.settingBudget.value) || 0 }));
-  els.settingMaxTokens.addEventListener('change', () => sendSettingsPatch({ maxTokens: Number(els.settingMaxTokens.value) || 512 }));
-  els.settingTemperature.addEventListener('change', () => sendSettingsPatch({ temperature: Number(els.settingTemperature.value) || 0.7 }));
+  if (els.settingBackend) {
+    els.settingBackend.addEventListener('change', async () => {
+      globalSettings.backend = els.settingBackend.value;
+      renderSettings();
+      await sendGlobalPatch({ backend: els.settingBackend.value });
+      try {
+        const response = await fetch('/api/models');
+        const data = await response.json();
+        fillModels(data.models || []);
+      } catch {
+        bus.emit('notice', 'Liste des modeles indisponible.');
+      }
+      await checkHealth();
+    });
+  }
 
-  els.settingPersona.addEventListener('change', () => sendGlobalPatch({ persona: els.settingPersona.value }));
+  if (els.settingOllamaUrl) {
+    els.settingOllamaUrl.addEventListener('change', () => {
+      globalSettings.ollamaUrl = els.settingOllamaUrl.value.trim();
+      sendGlobalPatch({ ollamaUrl: globalSettings.ollamaUrl }).then(checkHealth);
+    });
+  }
+
+  els.settingBudget.addEventListener('change', () => sendSettingsPatch({ contextBudget: Number(els.settingBudget.value) || 0 }));
 
   if (els.btnUpdateApply) {
     els.btnUpdateApply.addEventListener('click', () => { triggerUpdateApply(); });
@@ -1259,10 +1432,7 @@ function bind() {
     const response = await fetch('/api/model/select', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: els.settingModel.value,
-        context_length: Number(els.settingContextLength.value) || undefined,
-      }),
+      body: JSON.stringify({ model: els.settingModel.value }),
     });
     const data = await response.json();
     if (data.error) showToast(data.error);
@@ -1291,7 +1461,6 @@ async function boot() {
     session = data.session;
     settings = data.settings;
     globalSettings = data.settings;
-    personasList = data.personas || [];
     conversations = data.conversations || [];
     applyUpdatePayload(data);
     renderSettings();
@@ -1327,6 +1496,8 @@ window.__pocket = {
   get settings() { return settings; },
   get session() { return session; },
   get conversations() { return conversations; },
+  get attachments() { return pendingAttachments; },
+  uploadFiles,
   sendText,
   startDictation,
   stopDictation,

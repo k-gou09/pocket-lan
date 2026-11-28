@@ -2,11 +2,10 @@
 
 Le CLI n'est pas obligatoire : si un modele est deja charge dans LM Studio,
 l'application l'utilise directement. Le CLI sert uniquement quand on veut
-changer de modele ou fixer la fenetre de contexte au chargement.
+changer de modele. La fenetre de contexte est celle du modele dans LM Studio.
 
 Options utilisees (constatees avec 'lms load --help') :
   -y                    repond oui aux invites, necessaire en script
-  -c, --context-length  fenetre de contexte au chargement
   --parallel            nombre de predictions simultanees
   --identifier          identifiant utilise par l'API
 """
@@ -62,7 +61,7 @@ def subprocess_run(args, timeout=60):
     return (completed.stdout or "") + (completed.stderr or "")
 
 
-async def load_model(model_id, context_length=None, parallel=None, force=False):
+async def load_model(model_id, parallel=None, force=False):
     """Charge un modele dans LM Studio et rend le resultat de la commande."""
     path = cli_path()
     if not path:
@@ -83,8 +82,6 @@ async def load_model(model_id, context_length=None, parallel=None, force=False):
         )
 
     args = [path, "load", model_id, "-y"]
-    if context_length:
-        args += ["-c", str(int(context_length))]
     if parallel:
         args += ["--parallel", str(int(parallel))]
 

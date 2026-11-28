@@ -92,8 +92,19 @@
   --jaw: 0;
 }
 
-/* Second avatar : nova.html est charge dans une iframe, pilotee par postMessage. */
-.avatar-stage .nova-frame {
+/* Avatars charges dans une iframe, pilotes par postMessage. */
+/* Sans hauteur explicite, une iframe retombe sur 150px et s'etire en bandeau
+   quand la zone avatar est courte : on garde le cadre 400/470. */
+.avatar-stage.avatar-nova-active,
+.avatar-stage.avatar-iris-active {
+  width: auto;
+  max-width: 430px;
+  height: 100%;
+  aspect-ratio: 400 / 470;
+}
+
+.avatar-stage .nova-frame,
+.avatar-stage .iris-frame {
   display: block;
   width: 100%;
   height: 100%;
@@ -101,7 +112,8 @@
   background: transparent;
 }
 
-.avatar-stage .nova-error {
+.avatar-stage .nova-error,
+.avatar-stage .iris-error {
   position: absolute;
   inset: 0;
   display: flex;

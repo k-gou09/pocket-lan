@@ -1,9 +1,8 @@
 """Detection silencieuse des releases.
 
-Le serveur peut verifier periodiquement si une nouvelle version est publiee
-sur GitHub. La verification est cachee et silencieuse : aucun message n'est
-envoye aux utilisateurs, le resultat est conserve cote serveur pour un usage
-ulterieur (ex. page admin).
+Le serveur verifie periodiquement si une nouvelle version est publiee sur
+GitHub. Le resultat est diffuse aux utilisateurs pour afficher le badge de
+mise a jour ; aucun message n'est envoye tant que la version est a jour.
 
 La detection est desactivee si aucun depot GitHub n'est configure.
 """

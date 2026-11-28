@@ -4,8 +4,8 @@ import json
 import httpx
 import websockets
 
-BASE = "http://localhost:8000"
-WS_URL = "ws://localhost:8000/ws?sid=test_e2e_session"
+BASE = "http://localhost:8001"
+WS_URL = "ws://localhost:8001/ws?sid=test_e2e_session"
 
 
 async def test():
@@ -60,6 +60,7 @@ async def test():
             "type": "chat",
             "conv_id": conv["id"],
             "text": "Bonjour, comment tu t'appelles ?",
+            "attachments": [],
         }))
 
         # Collect chunks and done

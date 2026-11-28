@@ -4,13 +4,18 @@
 
 # 🤖 Pocket LAN
 
-**Un assistant IA local fonctionnant avec LM Studio.**
+**Un assistant IA local fonctionnant avec LM Studio ou Ollama.**
 
 Pocket LAN combine une interface moderne, un avatar animé, la synthèse vocale et des conversations privées exécutées directement sur votre machine.
 
 **Aucune API payante. Aucun abonnement. Vos données restent chez vous.**
 
 🌐 **Page du projet :** https://k-gou09.github.io/pocket-lan/
+
+> ⚠️ **Vous utilisez encore la version 0.2.0 ?**
+> Le bouton « Mettre à jour » de cette ancienne version ne sait pas installer une
+> mise à jour depuis une archive ZIP. Téléchargez et installez une fois le ZIP de
+> **v0.2.1** : ensuite, les mises à jour se font en un seul clic.
 
 Construit pour être simple :
 
@@ -20,9 +25,11 @@ Construit pour être simple :
 
 ## ✨ Fonctionnalités
 
-- 💬 Chat IA local via LM Studio
+- 💬 Chat IA local via LM Studio ou Ollama
 - 🤖 Avatar animé synchronisé avec la parole
-- 🎭 Deux avatars au choix dans les réglages (Pocket et Nova, avec voix féminine)
+- 🎭 Trois avatars au choix dans les réglages (Pocket, Nova la curieuse et Iris la lucide)
+- 📎 Pièces jointes : fichiers, images et photo de la caméra, avec vision directe
+- 🔄 Mises à jour en un clic, avec ou sans Git
 - 💾 Conversations sauvegardées automatiquement
 - 🔊 Synthèse vocale intégrée
 - 🖥️ Mode plein écran pour l'avatar

@@ -1,10 +1,10 @@
 """Serveur FastAPI : API, salle temps reel et interface PC en deux volets.
 
 Lance avec :
-  python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+  python -m uvicorn app.main:app --host 0.0.0.0 --port 8001
 
 Le port est ouvert sur toutes les interfaces : les autres PC du reseau ouvrent
-http://ADRESSE_IP_DU_SERVEUR:8000.
+http://ADRESSE_IP_DU_SERVEUR:8001.
 """
 
 import asyncio
@@ -15,11 +15,11 @@ import sys
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi import FastAPI, File, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, config, lm_client, model_mgr, personas, release, store
+from . import __version__, backends, config, lm_client, model_mgr, personas, release, store, updater, uploads
 from .lm_client import FifoGate
 from .service import answer
 from .ws import Hub
@@ -29,12 +29,12 @@ from .ws import Hub
 async def lifespan(application: FastAPI):
     store.connect()
     personas.ensure_seeded()
+    uploads.prune_pending()
     application.state.hub = Hub()
     application.state.client = httpx.AsyncClient()
     application.state.gate = FifoGate(store.get_global_settings().get("maxParallel", 2))
     application.state.release = release.initial_state()
     application.state.release_stop = asyncio.Event()
-    application.state.admin_sessions = set()
     application.state.restart_code = 0
 
     async def on_release_change(state):
@@ -64,8 +64,8 @@ async def prune_loop(hub):
 
 app = FastAPI(title="Pocket LAN", version=__version__, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(config.STATIC_DIR), html=True), name="static")
-# Les exemples d'avatars (nova.html, holo.html) servent aussi de second avatar
-# integre : ils sont charges dans une iframe avec le meme runtime que l'UI.
+# Les exemples d'avatars (nova.html, Qwen_iris.html) servent aussi de second
+# avatar integre : ils sont charges dans une iframe avec leur propre runtime.
 app.mount("/avatar", StaticFiles(directory=str(config.BASE_DIR / "avatar"), html=True), name="avatar")
 
 
@@ -132,7 +132,6 @@ def json_ok(payload, sid=None):
 
 def snapshot(sid):
     settings = store.effective_settings(sid)
-    admins = getattr(app.state, "admin_sessions", set())
     rel = getattr(app.state, "release", {})
     return {
         "session": store.ensure_session(sid),
@@ -145,8 +144,6 @@ def snapshot(sid):
         "personas": personas.list_personas(),
         "active_persona": personas.get_active(),
         "update": release.public_state(rel) if rel else {},
-        "is_admin": sid in admins,
-        "admin_enabled": bool(config.ADMIN_TOKEN),
     }
 
 
@@ -155,7 +152,9 @@ def print_startup():
     print("Pocket LAN " + __version__ + " sur :")
     print("  local      http://localhost:" + str(config.PORT))
     print("  reseau     http://" + address + ":" + str(config.PORT))
-    print("  LM Studio  " + config.LM_BASE_URL)
+    backend = backends.current()
+    print("  Backend    " + backends.label(backend))
+    print("  URL        " + backends.base_url(backend))
     print("  CLI lms    " + (model_mgr.cli_path() or "absent (le modele doit etre charge dans LM Studio)"))
     print("  base       " + str(config.DB_PATH))
 
@@ -179,8 +178,10 @@ async def index():
 async def health(request: Request):
     sid = session_id(request)
     error = ""
+    backend = backends.current()
+    url = backends.base_url(backend)
     try:
-        models = await lm_client.list_models(client())
+        models = await lm_client.list_models(client(), base_url=url, backend=backend)
         loaded = [m for m in models if m["state"] == "loaded"]
         reachable = True
     except lm_client.LmError as err:
@@ -191,7 +192,9 @@ async def health(request: Request):
 
     payload = {
         "ok": reachable,
-        "url": config.LM_BASE_URL,
+        "backend": backend,
+        "label": backends.label(backend),
+        "url": url,
         "cli": model_mgr.cli_path(),
         "models": len(models),
         "loaded": [m["id"] for m in loaded],
@@ -222,8 +225,14 @@ async def set_session_name(request: Request):
 @app.get("/api/models")
 async def get_models(request: Request):
     sid = session_id(request)
-    models = await lm_client.list_models(client())
-    return json_ok({"models": models}, sid)
+    backend = backends.current()
+    try:
+        models = await lm_client.list_models(
+            client(), base_url=backends.base_url(backend), backend=backend
+        )
+    except lm_client.LmError as err:
+        return json_ok({"models": [], "error": str(err)}, sid)
+    return json_ok({"models": models, "backend": backend}, sid)
 
 @app.get("/api/personas")
 async def get_personas(request: Request):
@@ -251,7 +260,8 @@ async def remove_conversation(conv_id: str, request: Request):
     conv = store.get_conversation(conv_id)
     if conv is None or conv["session_id"] != sid:
         return json_ok({"error": "Conversation introuvable pour cette session."}, sid)
-    store.delete_conversation(conv_id)
+    for path in store.delete_conversation(conv_id):
+        uploads.remove(path)
     return json_ok({"deleted": conv_id}, sid)
 
 
@@ -261,7 +271,37 @@ async def get_messages(conv_id: str, request: Request):
     conv = store.get_conversation(conv_id)
     if conv is None or conv["session_id"] != sid:
         return json_ok({"error": "Conversation introuvable pour cette session."}, sid)
-    return json_ok({"messages": store.list_messages(conv_id)}, sid)
+    messages = [store.public_message(item) for item in store.list_messages(conv_id)]
+    return json_ok({"messages": messages}, sid)
+
+
+@app.post("/api/upload")
+async def upload_attachment(request: Request, file: UploadFile = File(...)):
+    """Reçoit un fichier, extrait son texte et le garde en attente d'envoi."""
+    sid = session_id(request)
+    try:
+        meta = uploads.save_upload(sid, file.filename, await file.read(), file.content_type)
+    except uploads.UploadError as err:
+        return json_ok({"error": str(err)}, sid)
+    except OSError as err:
+        return json_ok({"error": "Enregistrement impossible : " + str(err)}, sid)
+    store.save_attachment(sid, meta)
+    return json_ok({"attachment": uploads.public(meta)}, sid)
+
+
+@app.get("/api/upload/{att_id}")
+async def download_attachment(att_id: str, request: Request):
+    sid = session_id(request)
+    found = store.get_attachment(sid, att_id)
+    if not found:
+        return json_ok({"error": "Fichier introuvable pour cette session."}, sid)
+    try:
+        path = uploads.path_for(found["path"])
+    except uploads.UploadError as err:
+        return json_ok({"error": str(err)}, sid)
+    if not path.exists():
+        return json_ok({"error": "Fichier supprimé."}, sid)
+    return FileResponse(path, filename=found["name"], media_type=found["mime"])
 
 
 @app.post("/api/settings")
@@ -294,10 +334,15 @@ async def select_model(request: Request):
     if not model_id:
         return json_ok({"error": "Identifiant de modele manquant."}, sid)
 
+    backend = backends.current()
     settings = store.save_global_settings({"model": model_id})
     gate().limit = max(1, int(settings.get("maxParallel", 2)))
 
     result = {"model": model_id, "loaded": False}
+    if not backends.uses_lms_cli(backend):
+        result["note"] = "Ollama charge le modèle automatiquement au premier message."
+        await hub().broadcast({"type": "model", "model": model_id, "result": result})
+        return json_ok(result, sid)
     if not model_mgr.cli_available():
         result["note"] = "CLI lms absent : charge le modele dans LM Studio."
         return json_ok(result, sid)
@@ -305,7 +350,6 @@ async def select_model(request: Request):
     try:
         loaded = await model_mgr.load_model(
             model_id,
-            context_length=body.get("context_length"),
             parallel=settings.get("maxParallel"),
             force=bool(body.get("force")),
         )
@@ -318,18 +362,6 @@ async def select_model(request: Request):
     return json_ok(result, sid)
 
 
-def is_admin(sid: str) -> bool:
-    return sid in getattr(app.state, "admin_sessions", set())
-
-
-def require_admin(sid: str) -> str:
-    if not config.ADMIN_TOKEN:
-        return "Administration désactivée (jeton admin indisponible sur ce serveur)."
-    if not is_admin(sid):
-        return "Accès administrateur requis."
-    return ""
-
-
 async def broadcast_update_state():
     await hub().broadcast({"type": "update", "update": release.public_state(app.state.release)})
 
@@ -337,81 +369,67 @@ async def broadcast_update_state():
 @app.get("/api/update")
 async def get_update(request: Request):
     sid = session_id(request)
-    return json_ok(
-        {
-            "update": release.public_state(app.state.release),
-            "is_admin": is_admin(sid),
-            "admin_enabled": bool(config.ADMIN_TOKEN),
-        },
-        sid,
-    )
-
-
-@app.post("/api/admin/login")
-async def admin_login(request: Request):
-    sid = session_id(request)
-    body = await request.json()
-    token = str(body.get("token") or "").strip()
-    if not config.ADMIN_TOKEN:
-        return json_ok({"error": "Administration désactivée (jeton admin indisponible sur ce serveur)."}, sid)
-    if token != config.ADMIN_TOKEN:
-        return json_ok({"error": "Jeton administrateur invalide."}, sid)
-    app.state.admin_sessions.add(sid)
-    await hub().send(sid, {"type": "admin", "is_admin": True})
-    return json_ok({"is_admin": True}, sid)
-
-
-@app.post("/api/admin/logout")
-async def admin_logout(request: Request):
-    sid = session_id(request)
-    app.state.admin_sessions.discard(sid)
-    await hub().send(sid, {"type": "admin", "is_admin": False})
-    return json_ok({"is_admin": False}, sid)
+    return json_ok({"update": release.public_state(app.state.release)}, sid)
 
 
 def _git(args, cwd):
     return subprocess.run(["git"] + args, cwd=cwd, capture_output=True, text=True, timeout=180)
 
 
+def _has_git_repo() -> bool:
+    """Vrai seulement pour un clone : une archive ZIP n'a pas de .git."""
+    return _git(["rev-parse", "--git-dir"], str(config.BASE_DIR)).returncode == 0
+
+
 async def _apply_update_task(by_name: str):
     state = app.state.release
     repo_dir = str(config.BASE_DIR)
+
+    async def report(text):
+        state["apply_message"] = text
+        await broadcast_update_state()
+
     try:
         state["applying"] = True
         state["apply_status"] = "running"
-        state["apply_message"] = "Vérification du dépôt..."
+        state["apply_message"] = "Vérification de l'installation..."
         state["applied_by"] = by_name
         await broadcast_update_state()
-
-        st = _git(["status", "--porcelain"], repo_dir)
-        if st.returncode != 0:
-            raise RuntimeError("git status a échoué: " + (st.stderr or st.stdout).strip()[-300:])
-        tracked = [ln for ln in (st.stdout or "").splitlines() if ln and not ln.startswith("??")]
-        if tracked:
-            raise RuntimeError("Mise à jour refusée: des modifications locales suivies sont présentes.")
 
         tag = str(state.get("latest") or "").strip()
         if not tag:
             raise RuntimeError("Aucune version cible disponible.")
 
-        state["apply_message"] = "Téléchargement (git fetch)..."
-        await broadcast_update_state()
-        r = _git(["fetch", "origin", "--tags", "--force"], repo_dir)
-        if r.returncode != 0:
-            raise RuntimeError("git fetch a échoué: " + (r.stderr or r.stdout).strip()[-400:])
+        if _has_git_repo():
+            st = _git(["status", "--porcelain"], repo_dir)
+            if st.returncode != 0:
+                raise RuntimeError("git status a échoué: " + (st.stderr or st.stdout).strip()[-300:])
+            tracked = [ln for ln in (st.stdout or "").splitlines() if ln and not ln.startswith("??")]
+            if tracked:
+                raise RuntimeError("Mise à jour refusée: des modifications locales suivies sont présentes.")
 
-        state["apply_message"] = f"Application de {tag}..."
-        await broadcast_update_state()
-        r = _git(["checkout", "--force", f"tags/{tag}"], repo_dir)
-        if r.returncode != 0:
-            r = _git(["checkout", "--force", tag], repo_dir)
-        if r.returncode != 0:
-            raise RuntimeError("git checkout a échoué: " + (r.stderr or r.stdout).strip()[-400:])
+            await report("Téléchargement (git fetch)...")
+            r = _git(["fetch", "origin", "--tags", "--force"], repo_dir)
+            if r.returncode != 0:
+                raise RuntimeError("git fetch a échoué: " + (r.stderr or r.stdout).strip()[-400:])
+
+            await report(f"Application de {tag}...")
+            r = _git(["checkout", "--force", f"tags/{tag}"], repo_dir)
+            if r.returncode != 0:
+                r = _git(["checkout", "--force", tag], repo_dir)
+            if r.returncode != 0:
+                raise RuntimeError("git checkout a échoué: " + (r.stderr or r.stdout).strip()[-400:])
+            mode = "git"
+        else:
+            work, zip_path = await updater.download(tag, app.state.client, report)
+            await report("Installation des fichiers...")
+            backup = await asyncio.to_thread(updater.install, work, zip_path, tag)
+            await report(f"Fichiers installés (sauvegarde : {backup}).")
+            mode = "zip"
 
         req = config.BASE_DIR / "requirements.txt"
         if req.exists():
-            state["apply_message"] = "Installation des dépendances..."
-            await broadcast_update_state()
+            await report("Installation des dépendances...")
             pip = subprocess.run(
                 [sys.executable, "-m", "pip", "install", "-r", str(req)],
                 cwd=repo_dir,
@@ -424,7 +442,7 @@ async def _apply_update_task(by_name: str):
                 raise RuntimeError("pip install a échoué: " + err[-500:])
 
         state["apply_status"] = "restarting"
-        state["apply_message"] = f"Mise à jour {tag} appliquée. Redémarrage..."
+        state["apply_message"] = f"Mise à jour {tag} appliquée ({mode}). Redémarrage..."
         await broadcast_update_state()
         await asyncio.sleep(1.5)
         app.state.restart_code = 42
@@ -439,10 +457,6 @@ async def _apply_update_task(by_name: str):
 @app.post("/api/update/apply")
 async def apply_update(request: Request):
     sid = session_id(request)
-    err = require_admin(sid)
-    if err:
-        return json_ok({"error": err}, sid)
-
     body = await request.json()
     force = bool(body.get("force"))
 
@@ -507,13 +521,20 @@ async def handle_message(sid, data, websocket=None):
 
     if kind == "chat":
         text = str(data.get("text", "")).strip()
-        if not text:
+        raw_ids = data.get("attachments") or []
+        attachment_ids = [str(item) for item in raw_ids if isinstance(item, str)][:8]
+        if not text and not attachment_ids:
             await hub().send(sid, {"type": "error", "message": "Message vide."})
             return
         # C'est cet onglet-ci qui lira la reponse a voix haute.
         if websocket is not None:
             hub().mark_speaker(sid, websocket)
-        asyncio.create_task(answer(hub(), client(), gate(), sid, data.get("conv_id") or "", text))
+        asyncio.create_task(
+            answer(
+                hub(), client(), gate(), sid, data.get("conv_id") or "", text,
+                attachment_ids=attachment_ids,
+            )
+        )
         return
 
     if kind == "regenerate":
@@ -568,7 +589,8 @@ async def handle_message(sid, data, websocket=None):
         if conv is None or conv["session_id"] != sid:
             await hub().send(sid, {"type": "error", "message": "Conversation introuvable."})
             return
-        store.delete_conversation(conv["id"])
+        for path in store.delete_conversation(conv["id"]):
+            uploads.remove(path)
         await hub().send(sid, {"type": "conversation_deleted", "conv_id": conv["id"]})
         return
 

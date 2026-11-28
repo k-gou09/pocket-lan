@@ -1,7 +1,7 @@
 """Controle d'environnement, lance par install.bat.
 
 Verifie trois choses : le virtualenv est actif, les dependances sont presentes,
-et le serveur local de LM Studio repond.
+et le serveur local du backend choisi repond.
 """
 
 import json
@@ -11,9 +11,11 @@ import sys
 import urllib.error
 import urllib.request
 
-DEPENDANCES = ["fastapi", "uvicorn", "httpx", "multipart"]
+DEPENDANCES = ["fastapi", "uvicorn", "httpx", "multipart", "PIL", "fitz"]
 LM_URL = os.environ.get("LMSTUDIO_URL", "http://127.0.0.1:1234").rstrip("/")
-PORT = os.environ.get("POCKET_PORT", "8000")
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
+BACKEND = os.environ.get("POCKET_BACKEND", "lms").strip().lower()
+PORT = os.environ.get("POCKET_PORT", "8001")
 
 
 def module_ok(name):
@@ -24,17 +26,20 @@ def module_ok(name):
         return False
 
 
-def ping_lm_studio():
+def ping_backend():
+    if BACKEND == "ollama":
+        name, url = "Ollama", OLLAMA_URL + "/v1/models"
+    else:
+        name, url = "LM Studio", LM_URL + "/api/v0/models"
     try:
-        with urllib.request.urlopen(LM_URL + "/api/v0/models", timeout=6) as response:
+        with urllib.request.urlopen(url, timeout=6) as response:
             data = json.load(response)
             models = data.get("data") or []
-            loaded = [m.get("id") for m in models if m.get("state") == "loaded"]
-            return True, "modeles connus : " + str(len(models)) + " | charges : " + (", ".join(loaded) or "aucun")
+            return True, name + " : " + str(len(models)) + " modele(s) disponible(s)"
     except urllib.error.HTTPError as err:
-        return False, "LM Studio repond mais avec le code " + str(err.code) + " (le serveur local est peut-etre eteint)"
+        return False, name + " repond avec le code " + str(err.code)
     except Exception as err:  # noqa: BLE001 - le serveur est peut-etre simplement eteint
-        return False, "LM Studio injoignable : " + str(err)
+        return False, name + " injoignable : " + str(err)
 
 
 def main():
@@ -49,9 +54,10 @@ def main():
 
     cli = shutil.which("lms") or os.environ.get("LMS_CLI") or ""
     print("CLI lms : " + (cli or "absent (le modele doit etre charge dans LM Studio)"))
+    print("Backend : " + ("Ollama" if BACKEND == "ollama" else "LM Studio"))
 
-    ok, detail = ping_lm_studio()
-    print("LM Studio : " + detail)
+    ok, detail = ping_backend()
+    print(detail)
 
     print("Serveur Pocket : http://localhost:" + PORT)
     print("Reseau : http://ADRESSE_IP_DU_PC:" + PORT + " (le pare-feu Windows doit autoriser le port)")

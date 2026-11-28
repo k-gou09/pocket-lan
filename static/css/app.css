@@ -432,6 +432,112 @@ textarea:focus-visible {
 .composer-btn[disabled] { opacity: 0.4; cursor: not-allowed; }
 .composer-btn svg { width: 20px; height: 20px; }
 
+/* Bouton trombone : menu déroulant fichier / image / caméra. */
+.attach-wrap { position: relative; flex: none; }
+
+.attach-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: 20;
+  min-width: 210px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-2);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
+.attach-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.attach-menu button:hover,
+.attach-menu button:focus-visible { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+
+.attach-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.attach-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attach-chip button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.attach-chip button:hover { color: var(--danger); }
+
+.attach-chip.is-busy { opacity: 0.6; }
+
+.msg .attach-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.msg .attach-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 5px 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.msg .attach-item:hover { border-color: var(--accent); }
+
+.msg .attach-thumb {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
 /* Pillier "nouveaux messages" quand l'utilisateur est reste plus haut. */
 .jump-pill {
   position: absolute;
@@ -540,7 +646,9 @@ textarea:focus-visible {
 
 .setting-number { width: 120px; }
 .setting-select { min-width: 180px; }
+.setting-text { width: 190px; }
 .setting-textarea { width: 100%; resize: vertical; }
+.setting-row[hidden] { display: none; }
 
 .primary-btn {
   border: 1px solid var(--accent-deep);

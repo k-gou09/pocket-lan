@@ -3,11 +3,19 @@
 
 import { Avatar } from './avatar.js';
 import { NovaAvatar } from './avatar-nova.js';
+import { IrisAvatar } from './avatar-iris.js';
 
 export const AVATARS = [
   { id: 'pocket', label: 'Pocket' },
   { id: 'nova', label: 'Nova · voix féminine' },
+  { id: 'iris', label: 'Iris · la lucide' },
 ];
+
+function createAvatar(id, el, options) {
+  if (id === 'nova') return new NovaAvatar(el, options);
+  if (id === 'iris') return new IrisAvatar(el, options);
+  return new Avatar(el, options);
+}
 
 export class AvatarSwitch {
   constructor(el, options = {}) {
@@ -20,7 +28,7 @@ export class AvatarSwitch {
   }
 
   use(id) {
-    const next = id === 'nova' ? 'nova' : 'pocket';
+    const next = AVATARS.some((avatar) => avatar.id === id) ? id : 'pocket';
     if (next === this.id && this.current) return;
 
     const snapshot = this.current
@@ -28,9 +36,7 @@ export class AvatarSwitch {
       : null;
     if (this.current) this.current.destroy();
 
-    this.current = next === 'nova'
-      ? new NovaAvatar(this.el, this.options)
-      : new Avatar(this.el, this.options);
+    this.current = createAvatar(next, this.el, this.options);
     this.id = next;
 
     // On restaure l'etat visible pour ne pas faire clignoter l'avatar au changement.

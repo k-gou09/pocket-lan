@@ -94,7 +94,7 @@
         <div id="messages" class="messages"></div>
         <div id="empty" class="empty">
           <div class="empty-title">Bonjour, je suis Pocket.</div>
-          <p class="muted">Assistant partagé sur le réseau local, propulsé par LM Studio.</p>
+          <p class="muted">Assistant partagé sur le réseau local, propulsé par un modèle local.</p>
           <div class="chips">
             <button class="chip" data-fill="Raconte-moi une histoire courte.">Raconte-moi une histoire</button>
             <button class="chip" data-fill="Explique-moi simplement ce que sont les trous noirs.">Explique-moi les trous noirs</button>
@@ -105,6 +105,25 @@
         <div class="composer">
           <div class="composer-inner">
             <div class="composer-row">
+              <div class="attach-wrap">
+                <button id="btnAttach" class="composer-btn" type="button" aria-label="Ajouter un fichier" aria-haspopup="menu" aria-expanded="false">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21.4 11.6l-8.5 8.5a5.5 5.5 0 01-7.8-7.8l8.9-8.9a3.7 3.7 0 015.2 5.2l-8.9 8.9a1.8 1.8 0 01-2.6-2.6l8.2-8.2"/></svg>
+                </button>
+                <div id="attachMenu" class="attach-menu" role="menu" hidden>
+                  <button type="button" role="menuitem" data-attach="file">
+                    <span aria-hidden="true">📄</span> Fichier · txt, PDF
+                  </button>
+                  <button type="button" role="menuitem" data-attach="image">
+                    <span aria-hidden="true">🖼️</span> Image du répertoire
+                  </button>
+                  <button type="button" role="menuitem" data-attach="camera">
+                    <span aria-hidden="true">📷</span> Prendre une photo
+                  </button>
+                </div>
+                <input id="fileInput" type="file" accept=".txt,.md,.markdown,.csv,.json,.log,application/pdf,text/plain,text/markdown,text/csv" multiple hidden />
+                <input id="imageInput" type="file" accept="image/*" multiple hidden />
+                <input id="cameraInput" type="file" accept="image/*" capture="environment" hidden />
+              </div>
               <textarea id="input" rows="1" placeholder="Message…" enterkeyhint="send"></textarea>
               <button id="btnMic" class="composer-btn" type="button" aria-pressed="false" aria-label="Dicter un message">
                 <svg class="i-mic-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3v10a4 4 0 004 4 4 4 0 004-4M12 3a3 3 0 00-3 3v7a4 4 0 008 0V6a3 3 0 00-3-3z"/><path d="M5 11v1a7 7 0 0014 0v-1M12 18v3"/></svg>
@@ -118,6 +137,7 @@
                 <svg class="i-stop" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false" hidden><rect x="6.5" y="6.5" width="11" height="11" rx="2.5"/></svg>
               </button>
             </div>
+            <div id="attachPreview" class="attach-preview" hidden aria-live="polite"></div>
           </div>
         </div>
       </section>
@@ -139,24 +159,19 @@
           <select id="settingModel" class="setting-select"></select>
         </div>
         <div class="setting-row">
-          <span>Fenêtre de contexte LM Studio</span>
-          <input id="settingContextLength" class="setting-number" type="number" min="128" max="32768" step="128" />
+          <span>Backend (partagé)</span>
+          <select id="settingBackend" class="setting-select">
+            <option value="lms">LM Studio</option>
+            <option value="ollama">Ollama</option>
+          </select>
+        </div>
+        <div class="setting-row" id="rowOllamaUrl">
+          <span>URL Ollama</span>
+          <input id="settingOllamaUrl" class="setting-text" type="text" placeholder="http://127.0.0.1:11434" />
         </div>
         <div class="setting-row">
           <span>Budget d'historique (tokens)</span>
           <input id="settingBudget" class="setting-number" type="number" min="120" max="16000" step="100" />
-        </div>
-        <div class="setting-row">
-          <span>Tokens de réponse</span>
-          <input id="settingMaxTokens" class="setting-number" type="number" min="64" max="4096" step="32" />
-        </div>
-        <div class="setting-row">
-          <span>Température</span>
-          <input id="settingTemperature" class="setting-number" type="number" min="0" max="2" step="0.1" />
-        </div>
-        <div class="setting-row">
-          <span>Utiliser le raisonnement si content est vide</span>
-          <button id="settingReasoning" class="setting-toggle" type="button" role="switch" aria-checked="false">désactivé</button>
         </div>
         <div class="setting-row">
           <span>Vocalisation</span>
@@ -174,21 +189,20 @@
           <span>Avatar</span>
           <select id="settingAvatar" class="setting-select">
             <option value="pocket">Pocket</option>
-            <option value="nova">Nova · voix féminine</option>
+            <option value="nova">Nova · la curieuse</option>
+            <option value="iris">Iris · la lucide</option>
           </select>
         </div>
         <div class="setting-row">
           <span id="settingVoiceLabel">Voix (navigateur)</span>
           <select id="settingVoice" class="setting-select"></select>
         </div>
-        <div class="setting-row">
-          <span>Persona (partagé)</span>
-          <select id="settingPersona" class="setting-select"></select>
-        </div>
         <button id="btnApplyModel" class="primary-btn">Appliquer le modèle</button>
         <p class="setting-note">
-          Le modèle est partagé : il est unique dans LM Studio, donc le choisir change la réponse de tout le monde.
-          La fenêtre de contexte est appliquée au chargement du modèle, le budget d'historique est appliqué à chaque requête.
+          Le modèle est partagé : le choisir change la réponse de tout le monde.
+          LM Studio et Ollama utilisent la même API compatible ; seul le backend et l'URL changent.
+          Le budget d'historique est appliqué à chaque requête.
+          Les images jointes nécessitent un modèle vision ; les PDF scannés sans texte ne peuvent pas être lus.
         </p>
       </div>
 

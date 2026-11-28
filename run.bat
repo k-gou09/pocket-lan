@@ -5,7 +5,7 @@ cd /d "%~dp0"
 rem ------------------------------------------------------------------
 rem Pocket LAN : lancement.
 rem Le serveur écoute sur toutes les interfaces : les autres PC du reseau
-rem ouvrent http://ADRESSE_IP_DU_PC:8000.
+rem ouvrent http://ADRESSE_IP_DU_PC:8001.
 rem Le pare-feu Windows doit autoriser le port (une seule fois, a la demande).
 rem ------------------------------------------------------------------
 
@@ -16,7 +16,7 @@ if not exist ".venv\Scripts\activate.bat" (
 
 call ".venv\Scripts\activate.bat"
 
-if "%POCKET_PORT%"=="" set "POCKET_PORT=8000"
+if "%POCKET_PORT%"=="" set "POCKET_PORT=8001"
 if "%LMSTUDIO_URL%"=="" set "LMSTUDIO_URL=http://127.0.0.1:1234"
 
 python check_env.py

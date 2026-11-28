@@ -19,3 +19,11 @@ desktop.ini
 *.swo
 .idea/
 .vscode/
+
+# Outils locaux et projets vidéo, non necessaires a l'application
+.serena/
+assets/
+assets_pub/
+pocket-lan-ad/
+readme_ex.md
+*.mp4
